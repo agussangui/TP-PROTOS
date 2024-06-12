@@ -10,7 +10,6 @@
 #include "selector.h"
 #include <string.h>
 #include <unistd.h>
-#include "request.h"
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
@@ -100,17 +99,17 @@ response_write(struct selector_key *key) {
 //parser con request read
 /** definición de handlers para cada estado */
 static const struct state_definition client_statbl[] = {
+   {
+        .state            = REQUEST_READ,
+        .on_arrival       = request_read_init,
+        .on_departure     = request_read_close,
+        .on_read_ready    = request_read,
+    },
     {
         .state            = RESPONSE_WRITE,
         //.on_arrival       = hello_read_init,
         //.on_departure     = hello_read_close,
         .on_write_ready    = response_write,
-    },
-    {
-        .state            = REQUEST_READ,
-        .on_arrival       = request_read_init,
-        .on_departure     = request_read_close,
-        .on_read_ready    = request_read,
     },
     {
         .state            = DONE,
@@ -130,13 +129,13 @@ static void smtp_destroy(struct smtp * state){
  */
 static void smtp_read   (struct selector_key *key);
 static void smtp_write  (struct selector_key *key);
-static void smtp_block  (struct selector_key *key);
-//static void smtp_close  (struct selector_key *key);
+//static void smtp_block  (struct selector_key *key);
+static void smtp_close  (struct selector_key *key);
 static const struct fd_handler smtp_handler = {
         .handle_read   = smtp_read,
         .handle_write  = smtp_write,
-        //.handle_close  = smtp_close,
-        .handle_block  = smtp_block,
+        .handle_close  = smtp_close,
+        //.handle_block  = smtp_block,
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -163,21 +162,21 @@ smtp_write(struct selector_key *key) {
     }
 }
 
-static void
-smtp_block(struct selector_key *key) {
+//static void
+//smtp_block(struct selector_key *key) {
 //    struct state_machine *stm   = &ATTACHMENT(key)->stm;
 //    const enum socks_v5state st = stm_handler_block(stm, key);
 //
 //    if(ERROR == st || DONE == st) {
 //        smtp_done(key);
 //    }
-}
-
-
-//static void
-//smtp_close(struct selector_key *key) {
-//    smtp_destroy(ATTACHMENT(key));
 //}
+
+
+static void
+smtp_close(struct selector_key *key) {
+    smtp_destroy(ATTACHMENT(key));
+}
 
 static void
 smtp_done(struct selector_key* key) {
