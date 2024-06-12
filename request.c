@@ -53,6 +53,7 @@ request_parser_feed (struct request_parser* p, const uint8_t c) {
                         next = request_verb;
                         break;
                 }
+                break;
         case request_cr:
                 switch(c){
                     case '\n':
@@ -62,6 +63,7 @@ request_parser_feed (struct request_parser* p, const uint8_t c) {
                         next = request_verb;
                         break;
                 }
+                break;
         case request_done:
         case request_error:
             next = p->state;
