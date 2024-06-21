@@ -83,6 +83,59 @@ static unsigned int request_read_basic(struct selector_key * key, struct smtp * 
     return ret;
 }
 
+static unsigned int data_read_basic(struct selector_key *key, struct smtp *state) {
+	unsigned int ret = DATA_READ;
+	bool error = false;
+
+	buffer * b = &state->read_buffer;
+	enum data_state st = state->data_parser.state;
+
+	while(buffer_can_read(b)) {
+		const uint8_t c = buffer_read(b);
+		st = data_parser_feed(&state->data_parser, c);
+		if(data_is_done(st)) {
+			break;
+		}
+	}
+
+	struct selector_key key_file; // TODO: Fix this
+
+	// write to file from buffer if is not empty
+    // we stop reading so that we can write to file
+    // file logic is similar 
+	if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_NOOP)) {
+		if (SELECTOR_SUCCESS == selector_set_interest_key(&key_file, OP_WRITE))
+			ret = DATA_WRITE; // Vuelvo a request_read
+	} else {
+		ret = ERROR;
+	}
+
+	return ret;
+}
+
+static unsigned data_read(struct selector_key *key) {
+	unsigned ret;
+	struct smtp *state = ATTACHMENT(key);
+
+	if (buffer_can_read(&state->read_buffer)) {
+		ret = data_read_basic(key, state);
+	} else {
+		size_t count;
+		uint8_t *ptr = buffer_write_ptr(&state->read_buffer, &count);
+		ssize_t n = recv(key->fd, ptr, count, 0);
+
+		if (n > 0) {
+			buffer_write_adv(&state->read_buffer, n);
+			ret = data_read_basic(key, state);
+		} else {
+			ret = ERROR;
+		}
+	}
+
+	return ret;
+}
+
+
 static unsigned
 request_read(struct selector_key *key) {
     unsigned  ret;  
@@ -125,7 +178,7 @@ response_write(struct selector_key *key) {
                 //check where to go (data or request)
                 if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
                     //Check if I have to change to data
-                    ret = REQUEST_READ;
+				    ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
                 }
                 else{
                     ret = ERROR;
@@ -137,6 +190,11 @@ response_write(struct selector_key *key) {
         }
 
         return error ? ERROR : ret;
+}
+
+static unsigned int data_write(struct selector_key * key){
+    //todo
+    return DATA_READ;
 }
 
 //parser con request read
@@ -155,7 +213,14 @@ static const struct state_definition client_statbl[] = {
         .on_write_ready    = response_write,
     },
     {
-        .state            = DATA_READ,
+    	.state             = DATA_READ,
+     	/*.on_arrival       = request_read_init, // TODO: Add init
+        .on_departure     = request_read_close,*/
+     	.on_read_ready	   = data_read,
+ 	},
+    {
+    	.state             = DATA_WRITE,
+        .on_write_ready	   = data_write,
     },
     {
         .state            = DONE,
