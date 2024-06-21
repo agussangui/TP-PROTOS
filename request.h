@@ -18,9 +18,9 @@ enum request_state {
     request_verb,
     request_arg1,
     request_data,
+    request_cr,
     request_done,
     request_error,
-    request_cr
 };
 
 struct request_parser {

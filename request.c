@@ -20,14 +20,16 @@ verb(const uint8_t c, struct request_parser* p) {
             break;
     }
     if (next == request_verb){
-        p->request->verb[p->i] = c;
-        p->i++; 
+        if (p->i < sizeof(p->request->verb) - 1){
+            p->request->verb[p->i] = (char) c;
+            p->i++; 
+        }
     }
     else{
         p->request->verb[p->i] = 0; 
-        if (strcmp(p->request->verb, "data") == 0){
-            next = request_data;
-        }
+//        if (strcmp(p->request->verb, "data") == 0){
+//            next = request_data;
+//        }
     }
     return next;
 }
@@ -50,7 +52,7 @@ request_parser_feed (struct request_parser* p, const uint8_t c) {
                         next = request_cr;
                         break;
                     default:
-                        next = request_verb;
+                        next = verb(c, p);
                         break;
                 }
                 break;

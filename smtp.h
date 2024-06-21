@@ -21,6 +21,8 @@ struct smtp{
 
     struct request request;
     struct request_parser request_parser;
+
+    char mailfrom[1024];
 };
 /** maquina de estados general */
 enum smtp_state{
@@ -50,12 +52,15 @@ enum smtp_state{
      */
     RESPONSE_WRITE,
 
-
+    DATA_READ,
     // estados terminales
     DONE,
     ERROR,
 };
 
+struct current_stats {
+    int historic_connections, concurrent_connections, bytes_transferred;
+};
 
 void
 smtp_passive_accept(struct selector_key *key);

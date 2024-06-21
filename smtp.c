@@ -10,6 +10,8 @@
 #include "selector.h"
 #include <string.h>
 #include <unistd.h>
+#include <strings.h>
+#include "server_responses.h"
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
@@ -29,37 +31,76 @@ static void request_read_close(const unsigned state, struct selector_key *key) {
     request_close(&ATTACHMENT(key)->request_parser);
 }
 
+static enum smtp_state request_process(struct smtp * state){
+    //continue
+    if (strcasecmp(state->request_parser.request->verb, "data") == 0){
+        return RESPONSE_WRITE;
+    }
+    if (strcasecmp(state->request_parser.request->verb, "mail from") == 0){
+        //modelo la respuesta
+        if (state->request_parser.request->arg1 != NULL){
+            size_t count;
+            uint8_t *ptr;
+            ptr = buffer_write_ptr(&state->write_buffer, &count);
+
+            //TODO: check count with n min(n, count)
+            memcpy(ptr, OK_RESPONSE, OK_RESPONSE_LEN);
+            buffer_write_adv(&state->write_buffer, OK_RESPONSE_LEN);
+            strcpy(state->mailfrom, state->request_parser.request->arg1);
+            return RESPONSE_WRITE;
+        }
+    }
+    if (strcasecmp(state->request_parser.request->verb, "helo") == 0){
+        //250-{name provided}
+        //250-PIPELINING
+        //250 SPACE 10240000
+        return RESPONSE_WRITE;
+    }
+    size_t count;
+    uint8_t *ptr;
+
+    ptr = buffer_write_ptr(&state->write_buffer, &count);
+
+    //TODO: check count with n min(n, count)
+    memcpy(ptr, OK_RESPONSE, OK_RESPONSE_LEN);
+    buffer_write_adv(&state->write_buffer, OK_RESPONSE_LEN);
+
+    return RESPONSE_WRITE;
+}
+
+static unsigned int request_read_basic(struct selector_key * key, struct smtp * state){
+    unsigned int ret = REQUEST_READ;
+    bool error = false;
+    int st = request_consume(&state->read_buffer, &state->request_parser, &error);
+    if (request_is_done(st, 0)){
+        if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){
+            //procesamiento
+            ret = request_process(state);
+        } else{ 
+            ret = ERROR; 
+        }
+    }
+    return ret;
+}
+
 static unsigned
 request_read(struct selector_key *key) {
-    unsigned  ret = REQUEST_READ;
+    unsigned  ret;  
     struct smtp* state = ATTACHMENT(key);
 
-    size_t count;
-    uint8_t *ptr = buffer_write_ptr(&state->read_buffer, &count);
-    ssize_t n = recv(key->fd, ptr, count, 0);
+    if (buffer_can_read(&state->read_buffer)){
+        ret = request_read_basic(key, state);
+    } else{
+        size_t count;
+        uint8_t *ptr = buffer_write_ptr(&state->read_buffer, &count);
+        ssize_t n = recv(key->fd, ptr, count, 0);
 
+        if (n > 0){
+            buffer_write_adv(&state->read_buffer, n);
 
-    if (n>0){
-        buffer_write_adv(&state->read_buffer, n);
-
-        bool  error = false;
-        int st = request_consume(&state->read_buffer, &state->request_parser, &error);
-        if (request_is_done(st, 0)){
-            //procesamiento
-            //request_read_access
-
-            if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){
-                ret = RESPONSE_WRITE;
-
-                ptr = buffer_write_ptr(&state->write_buffer, &count);
-
-                //TODO: check count with n min(n, count)
-                memcpy(ptr, "200\r\n", 5);
-                buffer_write_adv(&state->write_buffer, n);
-            } else{
-                ret= ERROR;
-            }
-        }else{
+            ret =request_read_basic(key, state);
+        }
+        else{
             ret = ERROR;
         }
     }
@@ -72,16 +113,18 @@ response_write(struct selector_key *key) {
         bool  error = false;
 
         size_t count;
-        buffer * b = &ATTACHMENT(key)->write_buffer;
+        buffer * wb = &ATTACHMENT(key)->write_buffer;
         //leo cuanto hay para escribir
-        uint8_t *ptr = buffer_read_ptr(b, &count);
+        uint8_t *ptr = buffer_read_ptr(wb, &count);
         ssize_t n = send(key->fd, ptr, count, MSG_NOSIGNAL);
 
         if(n>=0){
-            buffer_read_adv(b, n);
-            if (!buffer_can_read(b)){
-                
+            buffer_read_adv(wb, n);
+
+            if (!buffer_can_read(wb)){
+                //check where to go (data or request)
                 if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
+                    //Check if I have to change to data
                     ret = REQUEST_READ;
                 }
                 else{
@@ -110,6 +153,9 @@ static const struct state_definition client_statbl[] = {
         //.on_arrival       = hello_read_init,
         //.on_departure     = hello_read_close,
         .on_write_ready    = response_write,
+    },
+    {
+        .state            = DATA_READ,
     },
     {
         .state            = DONE,
@@ -159,6 +205,11 @@ smtp_write(struct selector_key *key) {
 
     if(ERROR == st || DONE == st) {
         smtp_done(key);
+    }else if (REQUEST_READ == st || DATA_READ == st){
+        buffer * rb = &ATTACHMENT(key)->read_buffer;
+        if (buffer_can_read(rb)){
+            smtp_read(key); //si hay para leer en el buffer sigo leyendo sin bloquearme
+        }
     }
 }
 
@@ -223,8 +274,8 @@ smtp_passive_accept(struct selector_key *key) {
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
 
     //se mantiene el estado que se selecciona mientras no se cambie
-    memcpy(&state->raw_buff_write, "Hola\n", 5);
-    buffer_write_adv(&state->write_buffer, 5);
+    memcpy(&state->raw_buff_write, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);
+    buffer_write_adv(&state->write_buffer, WELCOME_RESPONSE_LEN);
 
     //indico la dir donde se guarde
     state->request_parser.request = &state->request;
