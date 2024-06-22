@@ -7,7 +7,6 @@
 #include "buffer.h"
 #include "smtp_status_request.h"
 
-#define SMTP_INFO_BUFFER_SIZE 200
 
 struct smtp_status{
     /* información del cliente */
@@ -17,20 +16,20 @@ struct smtp_status{
      * necesario pues UDP
      * 1er request no 
      */
-    uint8_t client_id;
+    //uint8_t client_id;
 
     /* máquinas de estados */
     struct state_machine stm;
 
     /* buffers */
-    //uint8_t raw_buff_read[SMTP_INFO_BUFFER_SIZE], raw_buff_write[SMTP_INFO_BUFFER_SIZE];
-    //buffer read_buffer, write_buffer;
+    //uint8_t raw_buff_read[SMTP_INFO_BUFFER_SIZE]; //, raw_buff_write[SMTP_INFO_BUFFER_SIZE];
+    //buffer read_buffer; 
 
     // todo
     struct smtp_status_request request;
-    //struct smtp_status_parser request_parser;
+    struct smtp_status_parser request_parser;
 
-
+    smtp_status_request
 };
 
 
@@ -60,8 +59,7 @@ enum smtp_status_state {
      *   - REQUEST_READ    cuando se enviaron todos los bytes
      *   - ERROR           ante cualquier error (IO/parseo)
      */
-    RESPONSE_WRITE,
-
+    
     
     // estados terminales
     DONE,
