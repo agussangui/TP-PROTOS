@@ -3,7 +3,7 @@
 
 #include <unistd.h>
 
-#define SERVER_PORT 12345 // Puerto del servidor de métricas
+#define SERVER_PORT 7030 // Puerto del servidor de métricas
 #define AUTH "password" // Contraseña de autenticación
 
 #define CMD_HISTORICAL 0x00
@@ -25,7 +25,7 @@ struct request {
     uint16_t signature;
     uint8_t version;
     uint16_t identifier;
-    uint8_t auth;
+    uint8_t auth[8];
     uint8_t command;
 };
 
