@@ -32,7 +32,7 @@ void print_response(struct response *res) {
 }
 
 
-int client_main() {
+int main() {
     int sockfd;
     struct sockaddr_in6 server_addr;
     struct request req;
