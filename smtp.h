@@ -6,6 +6,7 @@
 #include "stm.h"
 #include "buffer.h"
 #include "request.h"
+#include "data.h"
 
 struct smtp{
     /* información del cliente */
@@ -16,13 +17,18 @@ struct smtp{
     struct state_machine stm;
 
     /* buffers */
-    uint8_t raw_buff_read[2048], raw_buff_write[2048];
-    buffer read_buffer, write_buffer;
+    uint8_t raw_buff_read[2048], raw_buff_write[2048], raw_buff_file[2048];
+    buffer read_buffer, write_buffer, file_buffer;
 
     struct request request;
     struct request_parser request_parser;
+	struct data_parser data_parser;
+
+    bool is_data;
 
     char mailfrom[1024];
+    //recordar cerrar en el close
+    int fileFd;
 };
 /** maquina de estados general */
 enum smtp_state{
@@ -52,7 +58,25 @@ enum smtp_state{
      */
     RESPONSE_WRITE,
 
+    /**
+     * lee la data del cliente.
+     *
+     * Intereses:
+     *     - OP_READ sobre client_fd
+     */
     DATA_READ,
+    /**
+     * escribe la data del cliente.
+     *
+     * Intereses:
+     *     - NOOP     sobre client_fd
+     *     - OP_WRITE sobre client_fd
+     * Transiciones:
+     *   - DATA_WRITE   mientras queden bytes para escribir 
+     *   - DATA_READ    cuando se vació el buffer
+     *   - ERROR        ante cualquier error (IO/parseo)
+     */
+    DATA_WRITE,
     // estados terminales
     DONE,
     ERROR,
