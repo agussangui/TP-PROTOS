@@ -23,12 +23,13 @@
 #include <sys/socket.h>  // socket
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stdint.h>
 
 #include "smtp.h"
 #include "selector.h"
 //#include "socks5nio.h"
 #include "args.h"
-#include <stdint.h>
+#include "metrics_client.h"
 
 static bool done = false;
 
@@ -39,8 +40,37 @@ sigterm_handler(const int signal) {
     done = true;
 }
 
-int
-main(int argc, char **argv) {
+
+// Funcion provisoria para ver el funcionamiento del servidor de métricas
+void handle_metrics(int udp_server) {
+    struct sockaddr_in6 client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    struct metrics_request req;
+    struct metrics_response res;
+
+    // Recibir datos del cliente UDP
+    ssize_t nbytes = recvfrom(udp_server, &req, sizeof(req), 0, (struct sockaddr *)&client_addr, &client_len);
+    if (nbytes < 0) {
+        perror("Error while receiving UDP data");
+        return;
+    }
+
+    // Procesar la solicitud recibida
+    printf("Signature: 0x%04X\n", ntohs(req.signature));
+    printf("Version: %d\n", req.version);
+    printf("Identifier: %d\n", ntohs(req.identifier));
+    printf("Command: 0x%02X\n", req.command);
+
+    // Ejemplo de respuesta
+    res.status = STATUS_OK;
+    res.signature = htons(req.signature);
+    res.version = htons(req.version);
+    res.identifier = htons(req.identifier);
+    res.response = 0xFF;
+    sendto(udp_server, &res, sizeof(res), 0, (struct sockaddr *)&client_addr, client_len);
+}
+
+int main(int argc, char **argv) {
     struct smtpargs args;
     parse_args(argc, argv, &args);
     // no tenemos nada que leer de stdin
@@ -78,6 +108,28 @@ main(int argc, char **argv) {
         err_msg = "unable to listen";
         goto finally;
     }
+
+
+    // Configuración para el servidor UDP
+    struct sockaddr_in6 metrics_addr;
+    memset(&metrics_addr, 0, sizeof(metrics_addr));
+    metrics_addr.sin6_family      = AF_INET6;
+    metrics_addr.sin6_addr        = in6addr_any;
+    metrics_addr.sin6_port        = htons(METRICS_SERVER_PORT);
+
+    // Creo el socket UDP 
+    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (metrics_server < 0) {
+        err_msg = "Unable to create UDP socket";
+        goto finally;
+    }
+
+    // Bind para UDP
+    if (bind(metrics_server, (struct sockaddr*) &metrics_addr, sizeof(metrics_addr)) < 0) {
+        err_msg = "Unable to bind UDP socket";
+        goto finally;
+    }
+
 
     // registrar sigterm es útil para terminar el programa normalmente.
     // esto ayuda mucho en herramientas como valgrind.
@@ -122,6 +174,7 @@ main(int argc, char **argv) {
             err_msg = "serving";
             goto finally;
         }
+        handle_metrics(metrics_server);
     }
     if(err_msg == NULL) {
         err_msg = "closing";
@@ -148,6 +201,10 @@ finally:
 
     if(server >= 0) {
         close(server);
+    }
+
+    if (metrics_server >= 0) {
+        close(metrics_server);
     }
     return ret;
 }
