@@ -96,7 +96,7 @@ main(int argc, char **argv) {
         },
     };
     if(0 != selector_init(&conf)) {
-        err_msg = "initializing selector";
+        err_msg = "initializing smtp selector";
         goto finally;
     }
 

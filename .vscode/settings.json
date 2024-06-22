@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.css": "tailwindcss",
+        "data.h": "c",
+        "selector.h": "c",
+        "metrics_client.h": "c"
+    }
+}
