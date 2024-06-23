@@ -28,7 +28,7 @@ enum buff_constants {
 
 static void
 smtp_done(struct selector_key* key);
-
+/*
 static void request_read_init(const unsigned st, struct selector_key *key){
     struct smtp_status_parser * p= &ATTACHMENT(key)->request_parser; 
     p->request = &ATTACHMENT(key)->request;
@@ -38,15 +38,18 @@ static void request_read_init(const unsigned st, struct selector_key *key){
 static void request_read_close(const unsigned state, struct selector_key *key) {
     request_close(&ATTACHMENT(key)->request_parser);
 }
-
+*/
 //static void request_process(smtp_status_request * request, char * buffer ){
-static void request_process(smtp_status_parser * parser, char * buffer ){
+static void request_process(struct smtp_status_parser * parser, char * buffer ){
     //continue
     // todo: ultima posicion = 0?
-    if (strcasecmp(parser->request->verb, "data") == 0){
-        memcpy(buffer, "hola", 4);
-    }
-    else if (strcasecmp(parser->request->verb, "mail from") == 0){
+    switch ( parser->request->cmd ){
+        case cmd_bytes_transferred:
+            memcpy(buffer, "bytes", 4);   
+        default:
+            memcpy(buffer, "chau", 4);   
+    
+     
         //modelo la respuesta
         //if (state->request_parser.request->arg1 != NULL){
         //    size_t count;
@@ -59,6 +62,7 @@ static void request_process(smtp_status_parser * parser, char * buffer ){
         //    return RESPONSE_WRITE;
         //}
     }
+    
 /*
     size_t count;
     uint8_t *ptr;
@@ -72,12 +76,12 @@ static void request_process(smtp_status_parser * parser, char * buffer ){
 }
 
 
-
+/*
 static void
 smtp_status_close(struct selector_key *key) {
     smtp_destroy(ATTACHMENT(key));
 }
-
+*/
 
 
 void
@@ -86,13 +90,13 @@ smtp_status_passive_accept(struct selector_key *key, const int server) {
     socklen_t client_addr_len = sizeof(client_addr);
 
     // todo: saco key
-    const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
-    if(client == -1) {
-        goto fail;
-    }
-    if(selector_fd_set_nio(client) == -1) {
-        goto fail;
-    }
+    //const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
+    //if(client == -1) {
+    //    goto fail;
+    //}
+    //if(selector_fd_set_nio(client) == -1) {
+    //    goto fail;
+    //}
  
     char buffer[MAXSTRINGLENGTH];
     
@@ -111,10 +115,11 @@ smtp_status_passive_accept(struct selector_key *key, const int server) {
         // request_parser_init(parser); 
         // paso smtp_status_request a parser
         // request_process(&parser, buffer);
-           memcpy(buffer, "hola", 4);
+           memcpy(buffer, "hola\n", 5);
+           buffer[6]='\0';
         // o ssize_t n = send(key->fd, ptr, count, MSG_NOSIGNAL); UDP => no window
         ssize_t n_sent = sendto(server, buffer, n_recv, 0,
-          (struct sockaddr *) &client_addr, &client_addr_len);
+          (struct sockaddr *) &client_addr, client_addr_len);
         
         if (n_sent < 0)
           fprintf(stderr, "sendto() failed"); // todo
@@ -130,11 +135,11 @@ smtp_status_passive_accept(struct selector_key *key, const int server) {
 //    }
 //    return;
 
-    fail:
-    if(client != -1) {
-        close(client);
-    }
+    //fail:
+    //if(client != -1) {
+    //    close(client);
+    //}
 
-    smtp_status_close(key);
+    //smtp_status_close(key);
     
 }

@@ -455,11 +455,15 @@ handle_iteration(fd_selector s) {
             if(FD_ISSET(item->fd, &s->slave_r)) {
                 if(OP_READ & item->interest) {
                     if(0 == item->handler->handle_read) {
-                        assert(("OP_READ arrived but no handler. bug!" == 0));
+                        if ( 0 == item->handler->handle_read_udp )
+                            assert(("OP_READ arrived but no handler. bug!" == 0));
+                        else 
+                            item->handler->handle_read_udp(&key, item->fd);
                     } else {
                         item->handler->handle_read(&key);
                     }
                 }
+                
             }
             if(FD_ISSET(i, &s->slave_w)) {
                 if(OP_WRITE & item->interest) {

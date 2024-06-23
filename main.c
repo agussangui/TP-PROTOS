@@ -23,13 +23,18 @@
 #include <sys/socket.h>  // socket
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stdint.h>
 
 #include "smtp.h"
+#include "smtp_status.h"
 #include "selector.h"
 //#include "socks5nio.h"
 #include "args.h"
-#include <stdint.h>
+#include "metrics_client.h"
 
+#define AMOUNT_OF_SELECTORS 2
+#define SMTP_SELECTOR 0
+#define SMTP_STATUS_SELECTOR 1
 static bool done = false;
 
 //para ctl c
@@ -39,16 +44,45 @@ sigterm_handler(const int signal) {
     done = true;
 }
 
-int
-main(int argc, char **argv) {
+
+// Funcion provisoria para ver el funcionamiento del servidor de métricas
+void handle_metrics(int udp_server) {
+    struct sockaddr_in6 client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    struct metrics_request req;
+    struct metrics_response res;
+
+    // Recibir datos del cliente UDP
+    ssize_t nbytes = recvfrom(udp_server, &req, sizeof(req), 0, (struct sockaddr *)&client_addr, &client_len);
+    if (nbytes < 0) {
+        perror("Error while receiving UDP data");
+        return;
+    }
+
+    // Procesar la solicitud recibida
+    printf("Signature: 0x%04X\n", ntohs(req.signature));
+    printf("Version: %d\n", req.version);
+    printf("Identifier: %d\n", ntohs(req.identifier));
+    printf("Command: 0x%02X\n", req.command);
+
+    // Ejemplo de respuesta
+    res.status = STATUS_OK;
+    res.signature = htons(req.signature);
+    res.version = htons(req.version);
+    res.identifier = htons(req.identifier);
+    res.response = 0xFF;
+    sendto(udp_server, &res, sizeof(res), 0, (struct sockaddr *)&client_addr, client_len);
+}
+
+int main(int argc, char **argv) {
     struct smtpargs args;
     parse_args(argc, argv, &args);
     // no tenemos nada que leer de stdin
     close(0);
 
     const char       *err_msg = NULL;
-    selector_status   ss      = SELECTOR_SUCCESS;
-    fd_selector selector      = NULL;
+    selector_status   ss[AMOUNT_OF_SELECTORS]      = {SELECTOR_SUCCESS};
+    fd_selector selector[AMOUNT_OF_SELECTORS]      = {NULL};
 
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
@@ -79,6 +113,34 @@ main(int argc, char **argv) {
         goto finally;
     }
 
+
+    // Configuración para el servidor UDP
+    struct sockaddr_in6 metrics_addr;
+    memset(&metrics_addr, 0, sizeof(metrics_addr));
+    metrics_addr.sin6_family      = AF_INET6;
+    metrics_addr.sin6_addr        = in6addr_any;
+    metrics_addr.sin6_port        = htons(METRICS_SERVER_PORT);
+
+    // Creo el socket UDP 
+    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    if (metrics_server < 0) {
+        err_msg = "Unable to create UDP socket";
+        goto finally;
+    }
+
+    fprintf(stdout, "Listening on UDP port %d\n", args.socks_port);
+
+    // man 7 ip. no importa reportar nada si falla.
+    setsockopt(metrics_server, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+
+    
+    // Bind para UDP
+    if (bind(metrics_server, (struct sockaddr*) &metrics_addr, sizeof(metrics_addr)) < 0) {
+        err_msg = "Unable to bind UDP socket";
+        goto finally;
+    }
+
+
     // registrar sigterm es útil para terminar el programa normalmente.
     // esto ayuda mucho en herramientas como valgrind.
     signal(SIGTERM, sigterm_handler);
@@ -100,9 +162,10 @@ main(int argc, char **argv) {
         goto finally;
     }
 
-    selector = selector_new(1024);
-    if(selector == NULL) {
-        err_msg = "unable to create selector";
+    // SMTP selector
+    selector[SMTP_SELECTOR] = selector_new(1024);
+    if(selector[SMTP_SELECTOR] == NULL) {
+        err_msg = "unable to create smtp selector";
         goto finally;
     }
     const struct fd_handler smtp= {
@@ -110,18 +173,37 @@ main(int argc, char **argv) {
         .handle_write      = NULL,
         .handle_close      = NULL, // nada que liberar
     };
-    ss = selector_register(selector, server, &smtp, OP_READ, NULL);
-    if(ss != SELECTOR_SUCCESS) {
+    ss[SMTP_SELECTOR] = selector_register(selector[SMTP_SELECTOR], server, &smtp, OP_READ, NULL);
+    if(ss[SMTP_SELECTOR] != SELECTOR_SUCCESS) {
         err_msg = "registering fd";
         goto finally;
     }
+
+    // SMTP_STATUS selector
+    selector[SMTP_STATUS_SELECTOR] = selector_new(1024);
+    if(selector[SMTP_STATUS_SELECTOR] == NULL) {
+        err_msg = "unable to create smtp status selector";
+        goto finally;
+    }
+    const struct fd_handler smtp_status= {
+        .handle_read_udp   = smtp_status_passive_accept,
+        .handle_write      = NULL,
+        .handle_close      = NULL,
+    };
+    ss[SMTP_STATUS_SELECTOR] = selector_register(selector[SMTP_STATUS_SELECTOR], metrics_server, &smtp_status, OP_READ, NULL);
+    if(ss[SMTP_STATUS_SELECTOR] != SELECTOR_SUCCESS) {
+        err_msg = "registering fd";
+        goto finally;
+    }
+
     for(;!done;) {
         err_msg = NULL;
-        ss = selector_select(selector);
-        if(ss != SELECTOR_SUCCESS) {
+        ss[SMTP_STATUS_SELECTOR] = selector_select(selector[SMTP_STATUS_SELECTOR]);
+        if(ss[SMTP_STATUS_SELECTOR] != SELECTOR_SUCCESS) {
             err_msg = "serving";
             goto finally;
         }
+
     }
     if(err_msg == NULL) {
         err_msg = "closing";
@@ -129,25 +211,39 @@ main(int argc, char **argv) {
 
     int ret = 0;
 finally:
-    if(ss != SELECTOR_SUCCESS) {
+    if(ss[SMTP_SELECTOR] != SELECTOR_SUCCESS) {
         fprintf(stderr, "%s: %s\n", (err_msg == NULL) ? "": err_msg,
-                                  ss == SELECTOR_IO
+                                  ss[SMTP_SELECTOR] == SELECTOR_IO
                                       ? strerror(errno)
-                                      : selector_error(ss));
+                                      : selector_error(ss[SMTP_SELECTOR]));
         ret = 2;
+    } else if( ss[SMTP_STATUS_SELECTOR] != SELECTOR_SUCCESS) {
+        fprintf(stderr, "%s: %s\n", (err_msg == NULL) ? "": err_msg,
+                                  ss[SMTP_STATUS_SELECTOR] == SELECTOR_IO
+                                      ? strerror(errno)
+                                      : selector_error(ss[SMTP_STATUS_SELECTOR]));
+        ret = 2;
+    
     } else if(err_msg) {
         perror(err_msg);
         ret = 1;
     }
-    if(selector != NULL) {
-        selector_destroy(selector);
+    if(selector[SMTP_SELECTOR] != NULL) {
+        selector_destroy(selector[SMTP_SELECTOR]);
+        if(selector[SMTP_STATUS_SELECTOR] != NULL) 
+            selector_destroy(selector[SMTP_STATUS_SELECTOR]);
     }
+    
     selector_close();
 
     //socksv5_pool_destroy();
 
     if(server >= 0) {
         close(server);
+    }
+
+    if (metrics_server >= 0) {
+        close(metrics_server);
     }
     return ret;
 }

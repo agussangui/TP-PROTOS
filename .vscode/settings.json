@@ -3,6 +3,17 @@
         "*.css": "tailwindcss",
         "data.h": "c",
         "selector.h": "c",
-        "metrics_client.h": "c"
+        "metrics_client.h": "c",
+        "smtp_status_request.h": "c",
+        "smtp_status.h": "c",
+        "string.h": "c",
+        "unistd.h": "c",
+        "strings.h": "c",
+        "server_responses.h": "c",
+        "stdint.h": "c",
+        "istream": "c",
+        "stop_token": "c",
+        "thread": "c",
+        "stdlib.h": "c"
     }
 }

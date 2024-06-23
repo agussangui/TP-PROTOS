@@ -126,6 +126,7 @@ struct selector_key {
  */
 typedef struct fd_handler {
      void (*handle_read)      (struct selector_key *key);
+     void (*handle_read_udp)      (struct selector_key *key, const int server);
      void (*handle_write)     (struct selector_key *key);
      void (*handle_block)     (struct selector_key *key);
 
