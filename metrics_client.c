@@ -7,11 +7,12 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#include "metrics_client.h"
+#include "metrics.h"
+#include "args.h"
 
 
 void create_request(struct metrics_request * req, uint16_t identifier, uint8_t command) {
-    req->signature = htons(0xFFFE);
+    req->signature = METRICS_SIGNATURE;
     req->version = 0x00;
     req->identifier = htons(identifier);
     req->auth = AUTH_TOKEN;
@@ -76,7 +77,10 @@ void print_response(struct metrics_response *res) {
     }
 }
 
-int main() {
+int main(int argc, char **argv) {
+    struct smtpargs args;
+    parse_args(argc, argv, &args);
+
     int sockfd;
     struct sockaddr_in6 server_addr;
     struct metrics_request req;
@@ -103,7 +107,7 @@ int main() {
     // htons() convierte el número de puerto al formato de red
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin6_family = AF_INET6;
-    server_addr.sin6_port = htons(METRICS_SERVER_PORT);
+    server_addr.sin6_port = htons(args.metrics_port);
 
     
     create_request(&req, identifier++, command);

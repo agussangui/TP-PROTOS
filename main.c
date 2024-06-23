@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     memset(&metrics_addr, 0, sizeof(metrics_addr));
     metrics_addr.sin6_family      = AF_INET6;
     metrics_addr.sin6_addr        = in6addr_any;
-    metrics_addr.sin6_port        = htons(METRICS_SERVER_PORT);
+    metrics_addr.sin6_port        = htons(args.metrics_port);
 
     // Creo el socket UDP 
     const int metrics_server = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -93,6 +93,8 @@ int main(int argc, char **argv) {
         err_msg = "Unable to create UDP socket";
         goto finally;
     }
+
+    fprintf(stdout, "Listening on UDP port %d\n", args.metrics_port);
     
     setsockopt(metrics_server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 

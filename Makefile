@@ -5,7 +5,7 @@ SMTPD_CLI:= smtpd
 METRICS_CLI:= metrics_client
 
 SMTPD_OBJS:= args.o selector.o main.o smtp.o stm.o buffer.o request.o data.o metrics_handler.o
-METRICS_OBJS := metrics_client.o
+METRICS_OBJS := args.o metrics_client.o
 
 .PHONY: all clean test 
 
@@ -33,7 +33,7 @@ request.o: request.h buffer.h
 
 data.o: data.h buffer.h
 
-metrics_client.o: metrics_client.h
+metrics_client.o: metrics.h
 
 metrics_handler.o: metrics_handler.h
 

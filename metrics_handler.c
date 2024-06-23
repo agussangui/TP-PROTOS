@@ -10,9 +10,9 @@
 
 static void process_metrics_request(struct metrics_request * req, struct metrics_response * res) {
 
-    res->signature = req->signature;
-    res->identifier = req->identifier;
+    res->signature = METRICS_SIGNATURE;
     res->version = METRICS_VERSION;
+    res->identifier = req->identifier;
 
     if(req->auth != AUTH_TOKEN) {
         res->status = STATUS_AUTH_FAILED;
@@ -21,6 +21,11 @@ static void process_metrics_request(struct metrics_request * req, struct metrics
 
     if(req->version != METRICS_VERSION) {
         res->status = STATUS_INVALID_VERSION;
+        return;
+    }
+
+    if(req->signature != METRICS_SIGNATURE) {
+        res->status = STATUS_UNEXPECTED_ERROR;
         return;
     }
 
@@ -64,14 +69,6 @@ void handle_metrics_read(struct selector_key *key) {
     struct metrics_request *req = (struct metrics_request *)buffer;
 
     process_metrics_request(req, &res);
-
-/*
-    printf("Auth: %d\n", ntohs(req->auth));
-    printf("Signature: 0x%04X\n", ntohs(req->signature));
-    printf("Version: %d\n", req->version);
-    printf("Identifier: %d\n", ntohs(req->identifier));
-    printf("Command: 0x%02X\n", req->command);
-    */
 
     // Enviar respuesta al cliente UDP
     sendto(udp_server, &res, sizeof(res), 0, (struct sockaddr *)&client_addr, client_len);

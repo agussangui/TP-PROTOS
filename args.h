@@ -24,6 +24,9 @@ struct smtpargs {
     char *          mng_addr;
     unsigned short  mng_port;
 
+    const char *    metrics_addr;
+    unsigned short  metrics_port;
+
     bool            disectors_enabled;
 
     struct users    users[MAX_USERS];
