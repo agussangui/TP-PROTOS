@@ -29,7 +29,7 @@
 #include "selector.h"
 //#include "socks5nio.h"
 #include "args.h"
-#include "metrics_client.h"
+#include "metrics_handler.h"
 
 static bool done = false;
 
@@ -38,36 +38,6 @@ static void
 sigterm_handler(const int signal) {
     printf("signal %d, cleaning up and exiting\n",signal);
     done = true;
-}
-
-
-// Funcion provisoria para ver el funcionamiento del servidor de métricas
-void handle_metrics(int udp_server) {
-    struct sockaddr_in6 client_addr;
-    socklen_t client_len = sizeof(client_addr);
-    struct metrics_request req;
-    struct metrics_response res;
-
-    // Recibir datos del cliente UDP
-    ssize_t nbytes = recvfrom(udp_server, &req, sizeof(req), 0, (struct sockaddr *)&client_addr, &client_len);
-    if (nbytes < 0) {
-        perror("Error while receiving UDP data");
-        return;
-    }
-
-    // Procesar la solicitud recibida
-    printf("Signature: 0x%04X\n", ntohs(req.signature));
-    printf("Version: %d\n", req.version);
-    printf("Identifier: %d\n", ntohs(req.identifier));
-    printf("Command: 0x%02X\n", req.command);
-
-    // Ejemplo de respuesta
-    res.status = STATUS_OK;
-    res.signature = htons(req.signature);
-    res.version = htons(req.version);
-    res.identifier = htons(req.identifier);
-    res.response = 0xFF;
-    sendto(udp_server, &res, sizeof(res), 0, (struct sockaddr *)&client_addr, client_len);
 }
 
 int main(int argc, char **argv) {
@@ -118,11 +88,13 @@ int main(int argc, char **argv) {
     metrics_addr.sin6_port        = htons(METRICS_SERVER_PORT);
 
     // Creo el socket UDP 
-    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, 0);
+    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
     if (metrics_server < 0) {
         err_msg = "Unable to create UDP socket";
         goto finally;
     }
+    
+    setsockopt(metrics_server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
     // Bind para UDP
     if (bind(metrics_server, (struct sockaddr*) &metrics_addr, sizeof(metrics_addr)) < 0) {
@@ -157,16 +129,31 @@ int main(int argc, char **argv) {
         err_msg = "unable to create selector";
         goto finally;
     }
-    const struct fd_handler smtp= {
+
+    const struct fd_handler smtp = {
         .handle_read       = smtp_passive_accept,
         .handle_write      = NULL,
         .handle_close      = NULL, // nada que liberar
     };
+
     ss = selector_register(selector, server, &smtp, OP_READ, NULL);
     if(ss != SELECTOR_SUCCESS) {
         err_msg = "registering fd";
         goto finally;
     }
+
+    const struct fd_handler udp_handler = {
+        .handle_read       = handle_metrics_read,
+        .handle_write      = NULL,
+        .handle_close      = NULL, // nada que liberar
+    };
+
+    ss = selector_register(selector, metrics_server, &udp_handler, OP_READ, NULL);
+        if(ss != SELECTOR_SUCCESS) {
+            err_msg = "registering UDP socket";
+            goto finally;
+        }
+
     for(;!done;) {
         err_msg = NULL;
         ss = selector_select(selector);
@@ -174,7 +161,6 @@ int main(int argc, char **argv) {
             err_msg = "serving";
             goto finally;
         }
-        handle_metrics(metrics_server);
     }
     if(err_msg == NULL) {
         err_msg = "closing";

@@ -1,8 +1,15 @@
-#ifndef TP_PROTOS_METRICS_CLIENT_H
-#define TP_PROTOS_METRICS_CLIENT_H
+#ifndef TP_PROTOS_METRICS_HANDLER_H
+#define TP_PROTOS_METRICS_HANDLER_H
 
+#include <sys/types.h>
+#include <stdio.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
 #include <unistd.h>
-#include <stdint.h>
+
+#include "selector.h" 
 
 #define METRICS_SERVER_PORT 7030 // Puerto del servidor de métricas
 #define AUTH_TOKEN 111 // Contraseña de autenticación
@@ -19,6 +26,8 @@
 #define STATUS_INVALID_REQUEST_LENGTH 0x04
 #define STATUS_UNEXPECTED_ERROR 0x05
 
+extern int historic_connections;
+extern int concurrent_connections;
 
 struct metrics_request {
     uint16_t signature;
@@ -36,5 +45,6 @@ struct metrics_response {
     uint8_t response;
 };
 
+void handle_metrics_read(struct selector_key *key);
 
-#endif //TP_PROTOS_METRICS_CLIENT_H
+#endif //TP_PROTOS_SMTP_H

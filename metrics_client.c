@@ -14,29 +14,20 @@ void create_request(struct metrics_request * req, uint16_t identifier, uint8_t c
     req->signature = htons(0xFFFE);
     req->version = 0x00;
     req->identifier = htons(identifier);
-    memcpy(req->auth, AUTH, 8);
+    req->auth = AUTH_TOKEN;
     switch (command) {
-    case 0:
-        req->command = CMD_HISTORICAL;
-        break;
-    case 1:
-        req->command = CMD_CONCURRENT;
-        break;
-    case 2: 
-        req->command = CMD_BYTES_TRANSFERRED;
-        break;
-    case 3: 
-        req->command = CMD_TRANSFORMATIONS_OFF;
-        break;
-    case 4:
-        req->command = CMD_TRANSFORMATIONS_ON;
-        break;
-    case 5:
-        req->command = CMD_TRANSFORMATIONS_STATE;
-        break;
-    default:
-        req->command = 0xFF;
-        break;
+        case 0:
+            req->command = CMD_HISTORICAL;
+            break;
+        case 1:
+            req->command = CMD_CONCURRENT;
+            break;
+        case 2: 
+            req->command = CMD_BYTES_TRANSFERRED;
+            break;
+        default:
+            req->command = 0xFF;
+            break;
     }
 }
 
@@ -98,15 +89,12 @@ int main() {
     printf("0: Historical Connections\n");
     printf("1: Concurrent Connections\n");
     printf("2: Bytes Transferred\n");
-    printf("3: Transformations Off\n");
-    printf("4: Transformations On\n");
-    printf("5: Transformations State\n");
     printf("Pealse, enter your choice: ");
     scanf("%d", &command);
 
 
     // Creo el socket UDP para enviarle solicitudes al servidor y recibir respuestas
-    if ((sockfd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
+    if ((sockfd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
         perror("The socket could not be created");
         return 1;
     }
