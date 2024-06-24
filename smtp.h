@@ -26,7 +26,8 @@ struct smtp{
 
     bool is_data;
 
-    char mailfrom[1024];
+    char * mailfrom[1024];
+    int senderNum;
     //recordar cerrar en el close
     int fileFd;
 };
