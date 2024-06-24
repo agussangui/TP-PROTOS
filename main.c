@@ -124,6 +124,8 @@ int main(int argc, char **argv) {
         goto finally;
     }
 
+    setsockopt(metrics_server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+
     // Bind para UDP
     if (bind(metrics_server, (struct sockaddr*) &metrics_addr, sizeof(metrics_addr)) < 0) {
         err_msg = "Unable to bind UDP socket";

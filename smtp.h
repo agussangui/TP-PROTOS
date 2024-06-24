@@ -70,7 +70,7 @@ enum smtp_state{
      *
      * Intereses:
      *     - NOOP     sobre client_fd
-     *     - OP_WRITE sobre client_fd
+     *     - OP_WRITE sobre archivo_fd
      * Transiciones:
      *   - DATA_WRITE   mientras queden bytes para escribir 
      *   - DATA_READ    cuando se vació el buffer
