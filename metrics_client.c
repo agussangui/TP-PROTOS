@@ -48,32 +48,53 @@ int receive_response(int sockfd, struct metrics_response *res) {
     return 0;
 }
 
-void print_response(struct metrics_response *res) {
+void print_options() {
+    printf("Select the metric to request:\n");
+    printf("0: Historical Connections\n");
+    printf("1: Concurrent Connections\n");
+    printf("2: Bytes Transferred\n");
+    printf("Pealse, enter your choice: ");
+}
+
+void print_response(struct metrics_response *res, int command) {
     switch(res->status) {
-    case STATUS_OK:
-        printf("Status: OK\n");
-        break;
-    case STATUS_AUTH_FAILED:
-        printf("Status: Authentication failed\n");
-        break;
-    case STATUS_INVALID_VERSION:
-        printf("Status: Invalid version\n");
-        break;
-    case STATUS_INVALID_COMMAND:    
-        printf("Status: Invalid command\n");
-        break;
-    case STATUS_INVALID_REQUEST_LENGTH:
-        printf("Status: Invalid request length\n");
-        break;
-    case STATUS_UNEXPECTED_ERROR:
-        printf("Status: Unexpected error\n");
-        break;
-    default:
-        printf("Status: Unknown\n");
-        break;
+        case STATUS_OK:
+            printf("Status: OK\n");
+            break;
+        case STATUS_AUTH_FAILED:
+            printf("Status: Authentication failed\n");
+            break;
+        case STATUS_INVALID_VERSION:
+            printf("Status: Invalid version\n");
+            break;
+        case STATUS_INVALID_COMMAND:    
+            printf("Status: Invalid command\n");
+            break;
+        case STATUS_INVALID_REQUEST_LENGTH:
+            printf("Status: Invalid request length\n");
+            break;
+        case STATUS_UNEXPECTED_ERROR:
+            printf("Status: Unexpected error\n");
+            break;
+        default:
+            printf("Status: Unknown\n");
+            break;
     }
+
     if(res->status == STATUS_OK) {
-        printf("Response: 0x%02X\n", res->response);
+        switch (command) {
+        case 0:
+            printf("Number of historical connections: 0x%02X\n", res->response);
+            break;
+        case 1:
+            printf("Number of current connections: 0x%02X\n", res->response);
+            break;
+        case 2:
+            printf("Number of bytes transferred: 0x%02X\n", res->response);
+            break;
+        default:
+            break;
+        }
     }
 }
 
@@ -81,20 +102,16 @@ int main(int argc, char **argv) {
     struct smtpargs args;
     parse_args(argc, argv, &args);
 
+    bool done = false;
+    bool valid_input = false;
+    char input[100];
+    uint16_t identifier = 1;
+
     int sockfd;
     struct sockaddr_in6 server_addr;
     struct metrics_request req;
     struct metrics_response res;
-    uint16_t identifier = 1;
     int command;
-    char input[10];
-
-    printf("Select the metric to request:\n");
-    printf("0: Historical Connections\n");
-    printf("1: Concurrent Connections\n");
-    printf("2: Bytes Transferred\n");
-    printf("Pealse, enter your choice: ");
-    scanf("%d", &command);
 
 
     // Creo el socket UDP para enviarle solicitudes al servidor y recibir respuestas
@@ -109,21 +126,58 @@ int main(int argc, char **argv) {
     server_addr.sin6_family = AF_INET6;
     server_addr.sin6_port = htons(args.metrics_port);
 
-    
-    create_request(&req, identifier++, command);
+    while(!done) {
+        
+        print_options();
+        
+        while(!valid_input) {
+            if (fgets(input, sizeof(input), stdin) != NULL) {
+                input[strcspn(input, "\n")] = '\0';
+                if (sscanf(input, "%d", &command) != 1) {
+                    printf("Invalid input. Please enter a number.\n");
+                } else valid_input = true;
+            } else {
+                printf("Error reading input.\n");
+                break;
+            }
+        }
 
-    if (send_request(sockfd, &server_addr, &req) < 0) {
-        perror("Failed to send request");
-        close(sockfd);
-        return 1;
-    }
+        create_request(&req, identifier++, command);
 
-    printf("Waiting for response...\n");
+        if (send_request(sockfd, &server_addr, &req) < 0) {
+            perror("Failed to send request");
+            close(sockfd);
+            return 1;
+        }
 
-    if (receive_response(sockfd, &res) < 0) {
-        perror("Failed to receive response");
-    } else {
-        print_response(&res);
+        printf("Waiting for response...\n");
+
+        if (receive_response(sockfd, &res) < 0) {
+            perror("Failed to receive response");
+        } else {
+            print_response(&res, command);
+        }
+
+        valid_input = false; 
+
+        while (!valid_input) {
+            printf("\nDo you want to make another request? (y/n): ");
+            if (fgets(input, sizeof(input), stdin) != NULL) {
+                input[strcspn(input, "\n")] = '\0';
+                if (strlen(input) == 1 && (input[0] == 'y' || input[0] == 'n')) {
+                    valid_input = true;
+                } else printf("Invalid input. Please enter 'y' or 'n'.\n");
+            } else {
+                printf("Error reading input.\n");
+                break;
+            }
+        }
+
+        if (valid_input && input[0] == 'n') {
+            done = true;
+        }
+
+        valid_input = false; 
     }
 
     close(sockfd);
