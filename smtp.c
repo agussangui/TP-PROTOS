@@ -56,12 +56,31 @@ static void request_read_close(const unsigned state, struct selector_key *key) {
     request_close(&ATTACHMENT(key)->request_parser);
 }
 
+static enum smtp_state handleErrors(struct smtp * state){
+    size_t count;
+    uint8_t *ptr;
+    ptr = buffer_write_ptr(&state->write_buffer, &count);
+
+    if (count > ERROR_UNRECOGNIZABLE_COMMAND_LEN){
+        memcpy(ptr, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+        buffer_write_adv(&state->write_buffer, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+
+        return RESPONSE_WRITE;
+    }
+
+    return ERROR;
+}
+
 static enum smtp_state request_process(struct smtp * state){
     //continue
     if (strcasecmp(state->request_parser.request->verb, "data") == 0){
         size_t count;
         uint8_t *ptr;
         ptr = buffer_write_ptr(&state->write_buffer, &count);
+
+        if (state->request_parser.request->args != NULL){
+            return handleErrors(state);
+        }
 
         //TODO: check count with n min(n, count)
         if (count > DATA_INIT_RESPONSE_LEN && state->request_parser.request->args == NULL){
@@ -76,7 +95,7 @@ static enum smtp_state request_process(struct smtp * state){
     }
     if (strcasecmp(state->request_parser.request->verb, "mail from") == 0){
         //modelo la respuesta
-        if (state->request_parser.request->args != NULL){
+        if (state->request_parser.request->args != NULL && state->is_helo_done){
             //strcpy(state->mailfrom, state->request_parser.request->args);
             size_t count;
             uint8_t *ptr;
@@ -88,37 +107,66 @@ static enum smtp_state request_process(struct smtp * state){
             char * endEmail;
             char separatorBegin[2] = BEGIN_EMAIL;
             char separatorEnd[2] = END_EMAIL;
-            senderWithEnd = strtok(state->request_parser.request->args, separatorBegin);
-            
-            beginEmail= strtok(NULL, BEGIN_EMAIL);
-            if (beginEmail != NULL){
-                return ERROR;
+
+            senderWithEnd = strchr(state->request_parser.request->args, '<');
+            if (senderWithEnd == NULL){
+                return handleErrors(state);
             }
+            senderWithEnd++;
+            if (strchr(senderWithEnd, '<') != NULL){
+                return handleErrors(state);
+            }
+            endEmail = strchr(senderWithEnd, '>');
+            if (endEmail == NULL){
+                return handleErrors(state);
+            }
+            endEmail++;
+            if (strchr(endEmail,'>') != NULL || strchr(endEmail,':') != NULL || strchr(endEmail,'<') != NULL ){
+                return handleErrors(state);
+            }
+            
             sender = strtok(senderWithEnd, separatorEnd);
-            endEmail = strtok(NULL, sender);
             //TODO: check count with n min(n, count)
-            if (count > MAIL_FROM_RECEIVED_RESPONSE_LEN && endEmail== NULL){
-//                if (count > MAIL_FROM_RECEIVED_RESPONSE_LEN){
+            if (count > MAIL_FROM_RECEIVED_RESPONSE_LEN){
                 memcpy(ptr, MAIL_FROM_RECEIVED_RESPONSE, MAIL_FROM_RECEIVED_RESPONSE_LEN);
                 buffer_write_adv(&state->write_buffer, MAIL_FROM_RECEIVED_RESPONSE_LEN);
                 size_t mailLen = strlen(sender);
-                //piso el >
-                memcpy(&state->mailfrom[state->senderNum],sender, mailLen);
+
+                //TODO: free necesario 
+                char * mail = calloc(1, mailLen +1);
+                memcpy(mail, sender, mailLen);
+                state->mailfrom[state->senderNum] = mail;
                 state->senderNum++;
 
                 size_t count;
                 //imprimo lo que guarde para ver si lo almacené bien
                 ptr = buffer_write_ptr(&state->write_buffer, &count);
                 if (count > mailLen){
-                memcpy(ptr, sender, mailLen);
-                buffer_write_adv(&state->write_buffer, mailLen);
-                return RESPONSE_WRITE;
+                    memcpy(ptr, sender, mailLen);
+                    buffer_write_adv(&state->write_buffer, mailLen);
+                    return RESPONSE_WRITE;
                 }else {
                     return ERROR;
                 }
             }else{
                 return ERROR;
             }
+        }
+        if (!state->is_helo_done){
+            //TODO: Mensaje de error nuevo 
+//            size_t count;
+//            uint8_t *ptr;
+//            ptr = buffer_write_ptr(&state->write_buffer, &count);
+//
+//            //TODO: check count with n min(n, count)
+//            if (count > RCPT_TO_RECEIVED_RESPONSE_LEN){
+//                memcpy(ptr, RCPT_TO_RECEIVED_RESPONSE, RCPT_TO_RECEIVED_RESPONSE_LEN);
+//                buffer_write_adv(&state->write_buffer, RCPT_TO_RECEIVED_RESPONSE_LEN);
+//                
+//                return RESPONSE_WRITE;
+//            }else{
+//                return ERROR;
+//            } 
         }
     }
     if (strcasecmp(state->request_parser.request->verb, "rcpt to") == 0){
@@ -151,6 +199,7 @@ static enum smtp_state request_process(struct smtp * state){
             int ehlo_response_len = strlen(ehlo_response);
             memcpy(ptr, ehlo_response, ehlo_response_len);
             buffer_write_adv(&state->write_buffer, ehlo_response_len);
+            state->is_helo_done = true;
         }else{
             return ERROR;
         }
@@ -164,21 +213,14 @@ static enum smtp_state request_process(struct smtp * state){
         if (count > OK_EHLO_RESPONSE_LEN){
             memcpy(ptr, OK_HELO_RESPONSE, OK_HELO_RESPONSE_LEN);
             buffer_write_adv(&state->write_buffer, OK_HELO_RESPONSE_LEN);
+            state->is_helo_done = true;
         }else{
             return ERROR;
         }
         return RESPONSE_WRITE;
     }
-    size_t count;
-    uint8_t *ptr;
 
-    ptr = buffer_write_ptr(&state->write_buffer, &count);
-
-    //TODO: check count with n min(n, count)
-    memcpy(ptr, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
-    buffer_write_adv(&state->write_buffer, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
-
-    return RESPONSE_WRITE;
+    return handleErrors(state);
 }
 
 static unsigned int request_read_basic(struct selector_key * key, struct smtp * state){
