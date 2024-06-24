@@ -28,7 +28,11 @@ struct smtp{
 
     char mailfrom[1024];
     //recordar cerrar en el close
-    int fileFd;
+    union {
+        int fileFd;
+        int clientFd;
+    };
+
 };
 /** maquina de estados general */
 enum smtp_state{

@@ -163,12 +163,12 @@ int i = state->data_parser.i ;
 // escribo si lei , lo deje abajo
     // done o no, escribo en el file
 
-    // TODO: Fix this
 	struct selector_key key_file = {  
         .s = key->s,
-        .data = &key,      // * no se si es necesario 
+        .data = key->data,      // * no se si es necesario 
         .fd = state->fileFd     
         }; 
+    state->clientFd = key->fd;
 
 	// write to file from buffer if is not empty
     // we stop reading so that we can write to file
@@ -294,9 +294,10 @@ static unsigned int data_write(struct selector_key * key){
                 //check where to go (data or request)
                 if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_NOOP)){ 
                     // obtengo fd del socket
-                    struct selector_key * sock_key = key->data;
-                    if (SELECTOR_SUCCESS == selector_set_interest( key->s,sock_key->fd, OP_READ)){ 
-                    // ! necesito cambiar de key        
+                    // ! creo q funciona pero de pedo, xq el fd=0
+                    struct smtp * state = ATTACHMENT(key);
+                    if (SELECTOR_SUCCESS == selector_set_interest( key->s,state->clientFd , OP_READ)){ 
+                        state->fileFd = key->fd;
                         //Check if I have to change to data
                         //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
                         ret = REQUEST_READ;
