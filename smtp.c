@@ -177,10 +177,59 @@ static enum smtp_state request_process(struct smtp * state){
             uint8_t *ptr;
             ptr = buffer_write_ptr(&state->write_buffer, &count);
 
+            char * saveptr;
+            char * beginEmail;
+            char * endEmail;
+            char * provisionalRecipients[MAX_RECIPIENTS_SUPPORTED];
+            size_t currentRecipient = 0;
+            char separatorBegin[2] = BEGIN_EMAIL;
+            char separatorEnd[2] = END_EMAIL;
+            char * nextOcurrence;
+
+            nextOcurrence = strchr(state->request_parser.request->args, '<');
+            if (nextOcurrence == NULL || nextOcurrence != state->request_parser.request->args){
+                return handleErrors(state);
+            }
+            size_t len = strlen(nextOcurrence);
+            char * toTrim = calloc(1, len +1);
+            memcpy(toTrim, nextOcurrence, len);
+            nextOcurrence++;
+            char * rcpt = strtok_r(toTrim, separatorBegin, &saveptr);
+
+            while (rcpt != NULL){
+                endEmail = strtok_r(rcpt, separatorEnd, &saveptr);
+
+                if (endEmail == NULL){
+                    return handleErrors(state);
+                }else{
+                    size_t mailLen = strlen(endEmail);
+                    char * mail = calloc(1, mailLen + 1);
+                    memcpy(mail, endEmail, mailLen);
+                    provisionalRecipients[currentRecipient]= mail;
+                    currentRecipient++;
+                }
+
+                nextOcurrence = strchr(nextOcurrence, '<');
+                if (nextOcurrence == NULL) {
+                    break;
+                }
+                len = strlen(nextOcurrence);
+                toTrim = calloc(1, len + 1);
+                memcpy(toTrim, nextOcurrence, len);
+                nextOcurrence++;
+                rcpt = strtok_r(toTrim, separatorBegin, &saveptr);
+            }
+            if (strtok_r(NULL, separatorEnd, &saveptr) != NULL){
+                return handleErrors(state);
+            }
+
             //TODO: check count with n min(n, count)
             if (count > RCPT_TO_RECEIVED_RESPONSE_LEN){
                 memcpy(ptr, RCPT_TO_RECEIVED_RESPONSE, RCPT_TO_RECEIVED_RESPONSE_LEN);
                 buffer_write_adv(&state->write_buffer, RCPT_TO_RECEIVED_RESPONSE_LEN);
+                for (size_t i = 0; i < currentRecipient; i++, state->receiverNum++){
+                    state->rcptTo[ state->receiverNum + i] = provisionalRecipients[i];
+                }
                 
                 return RESPONSE_WRITE;
             }else{
@@ -194,8 +243,8 @@ static enum smtp_state request_process(struct smtp * state){
         ptr = buffer_write_ptr(&state->write_buffer, &count);
         //manage username
         if (count > OK_EHLO_RESPONSE_LEN){
-            char ehlo_response[256];
-            int n = sprintf(ehlo_response, OK_EHLO_RESPONSE, state->request_parser.request->args);
+            char ehlo_response[1024];
+            size_t n = sprintf(ehlo_response, OK_EHLO_RESPONSE, state->request_parser.request->args);
             int ehlo_response_len = strlen(ehlo_response);
             memcpy(ptr, ehlo_response, ehlo_response_len);
             buffer_write_adv(&state->write_buffer, ehlo_response_len);

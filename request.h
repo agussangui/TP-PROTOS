@@ -10,7 +10,7 @@
 
 struct request {
     char verb[15];
-    char args[32];
+    char args[256];
 };
 
 //el lf es el done
