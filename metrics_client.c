@@ -13,7 +13,7 @@
 
 void create_request(struct metrics_request * req, uint16_t identifier, uint8_t command) {
     req->signature = METRICS_SIGNATURE;
-    req->version = 0x00;
+    req->version = METRICS_VERSION;
     req->identifier = htons(identifier);
     req->auth = AUTH_TOKEN;
     switch (command) {
@@ -25,6 +25,15 @@ void create_request(struct metrics_request * req, uint16_t identifier, uint8_t c
             break;
         case 2: 
             req->command = CMD_BYTES_TRANSFERRED;
+            break;
+        case 3:
+            req->command = CMD_VERBOSE_ON;
+            break;
+        case 4:
+            req->command = CMD_VERBOSE_OFF;
+            break;
+        case 5:
+            req->command = CMD_VERBOSE_STATUS;
             break;
         default:
             req->command = 0xFF;
@@ -53,6 +62,9 @@ void print_options() {
     printf("0: Historical Connections\n");
     printf("1: Concurrent Connections\n");
     printf("2: Bytes Transferred\n");
+    printf("3: Verbose mode ON\n");
+    printf("4: Verbose mode OFF\n");
+    printf("5: Verbose mode status\n");
     printf("Pealse, enter your choice: ");
 }
 
@@ -91,6 +103,15 @@ void print_response(struct metrics_response *res, int command) {
             break;
         case 2:
             printf("Number of bytes transferred: %d\n", res->response);
+            break;
+        case 3:
+            printf("Verbose mode is ON\n");
+            break;
+        case 4:
+            printf("Verbose mode is OFF\n");
+            break;
+        case 5:
+            printf("Verbose mode is %s\n", res->response? "ON" : "OFF");
             break;
         default:
             break;

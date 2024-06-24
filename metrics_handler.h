@@ -12,6 +12,19 @@
 #include "selector.h" 
 #include "metrics.h"
 
+
+typedef struct client_info {
+    int sockfd;
+    struct sockaddr_in6 client_addr;
+    bool verbose;
+    struct client_info * next;
+} client_info;
+
+struct clients {
+    struct client_info * first;
+    struct client_info * tail;
+};
+
 void handle_metrics_read(struct selector_key *key);
 
 #endif //TP_PROTOS_SMTP_H
