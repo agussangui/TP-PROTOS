@@ -84,13 +84,13 @@ void print_response(struct metrics_response *res, int command) {
     if(res->status == STATUS_OK) {
         switch (command) {
         case 0:
-            printf("Number of historical connections: 0x%02X\n", res->response);
+            printf("Number of historical connections: %d\n", res->response);
             break;
         case 1:
-            printf("Number of current connections: 0x%02X\n", res->response);
+            printf("Number of current connections:%d\n", res->response);
             break;
         case 2:
-            printf("Number of bytes transferred: 0x%02X\n", res->response);
+            printf("Number of bytes transferred: %d\n", res->response);
             break;
         default:
             break;
