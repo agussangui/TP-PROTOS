@@ -203,7 +203,7 @@ static unsigned int request_read_basic(struct selector_key * key, struct smtp * 
 }
 
 static void data_read_init(const unsigned st, struct selector_key *key){
-    struct smtp * state = ATTACHMENT(key);
+    
     struct data_parser * p= &ATTACHMENT(key)->data_parser; 
     
     data_parser_init(p); 
@@ -219,44 +219,28 @@ static void data_read_init(const unsigned st, struct selector_key *key){
     //int pid = getpid();
     //char *filename = malloc(512);
     //snprintf(filename, 512, "%ld.M%ldP%d.%s", now, now, pid, hostname);
-    char * path = "prueba_2";     // TMP
-    FILE * file = fopen(path, "a+");     // + x si necesito tmb escribir
-                                    // si no existe, se crea
-    int fd = fileno(file);
-    if ( fd < 0 ) {
-        perror("Coundn't open file");  // ! desp sacar<
-        goto fail;
-    }
     
-    state->fileFd = fd;
-    // SIZE MAIL ? 
+}
 
-    // Header
-    char * from_user = "agus\n"; //state->mailfrom = 
+static void write_header(struct selector_key * key) {
+    struct smtp * state = ATTACHMENT(key);
+    char * from_user = "agus"; //state->mailfrom = 
     char * subject = "Hola";
     buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
     size_t count = 15;      // todo
 
     char blank_space[DATE_SPACE_SIZE]={' '};
     char header[100];
-    sprintf( header, "From: %s \nDate: %s\nSubject: %s\n",from_user,blank_space,subject);
+    sprintf( header, "From: %s\nDate: %s\nSubject: %s\n",from_user,blank_space,subject);
     //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
     size_t header_size = strlen(header);
-    //memcpy(&state->raw_buff_file, header, header_size);
-    //buffer_write_adv(&state->file_buffer, header_size);
-    memcpy(&state->raw_buff_file, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);
-    buffer_write_adv(&state->file_buffer, WELCOME_RESPONSE_LEN);
+    memcpy(&state->raw_buff_file, header, header_size);
+    buffer_write_adv(&state->file_buffer, header_size);
     
+    uint8_t *ptr = buffer_read_ptr(&state->file_buffer, &count);
 
-    if(SELECTOR_SUCCESS != selector_register(key->s, fd, &smtp_handler, OP_NOOP, state )) {
-        perror("Coundn't register file");  // ! desp sacar 
-        close(fd);
-    }
-
-    return;
-fail: 
-    close(fd);
-    smtp_destroy(state);
+    ssize_t n = write(state->fileFd , ptr ,  count);
+    // check desp
 }
 
 static unsigned int data_read_basic(struct selector_key *key, struct smtp *state) {
@@ -278,25 +262,20 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
             if(data_is_done(st)) {      // llegue al ultimo estado crlf sdi pongo desp lo de "250 queued, = data_done"
                 break;                  // ya termine de leer lo enviado
             }
+        i++;
 	}
     
 // escribo si lei , lo deje abajo
     // done o no, escribo en el file
 
-	struct selector_key key_file = {  
-        .s = key->s,
-        .data = key->data,      
-        .fd = state->fileFd     }; 
-    state->clientFd = key->fd;
 
 	// write to file from buffer if is not empty
     // we stop reading so that we can write to file
     // file logic is similar 
-	if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
+	if (i>0 && SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
         // i != state->data_parser.i && 
-        if ( SELECTOR_SUCCESS == selector_set_interest_key(&key_file, OP_WRITE)) {
-            ret = DATA_WRITE; // Vuelvo a request_read
-            }
+        ret = DATA_WRITE; // Vuelvo a request_read
+        
 	} else {
 		ret = ERROR;
 	}
@@ -314,7 +293,7 @@ static unsigned data_read(struct selector_key *key) {
 		size_t count;
 		uint8_t *ptr = buffer_write_ptr(&state->read_buffer, &count);
 		ssize_t n = recv(key->fd, ptr, count, 0);
-
+        
 		if (n > 0) {
 			buffer_write_adv(&state->read_buffer, n);
 			ret = data_read_basic(key, state);
@@ -373,6 +352,7 @@ response_write(struct selector_key *key) {
                     //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
                     //ret =state->is_data ? DATA_READ:DATA_WRITE;
                      ATTACHMENT(key)->is_data = true; 
+                     write_header(key);
                      ret = DATA_READ;
                 }
                 else{
@@ -392,14 +372,15 @@ static unsigned int data_write(struct selector_key * key){
         perror("llegue");
         unsigned  ret = DATA_WRITE;
         bool  error = false;
-    
+        struct smtp * state = ATTACHMENT(key);
+
         buffer * wb = &ATTACHMENT(key)->file_buffer;
         //leo cuanto hay para escribir
         size_t count;
         
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        ssize_t n = write(key->fd, ptr ,  count);
+        ssize_t n = write(state->fileFd , ptr ,  count);
         
         if (errno == EWOULDBLOCK) {         // * temp
             perror("write will block");
@@ -411,12 +392,8 @@ static unsigned int data_write(struct selector_key * key){
 
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
-                if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_NOOP)){ 
-                    // obtengo fd del socket
-                    // ! creo q funciona pero de pedo, xq el fd=0
-                    struct smtp * state = ATTACHMENT(key);
-                    if (SELECTOR_SUCCESS == selector_set_interest( key->s,state->clientFd , OP_READ)){ 
-                        state->fileFd = key->fd;
+                    if (SELECTOR_SUCCESS == selector_set_interest_key( key, OP_READ)){ 
+                        //state->fileFd = key->fd;
                         //Check if I have to change to data
                         ret = DATA_READ; //ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
                         //ret = REQUEST_READ;
@@ -425,9 +402,7 @@ static unsigned int data_write(struct selector_key * key){
                 else{
                     ret = ERROR;
                 }
-            }
-        }
-        else{
+        } else{
             ret = ERROR;
         }
 
@@ -453,7 +428,7 @@ static const struct state_definition client_statbl[] = {
     },
     {
     	.state             = DATA_READ,
-     	.on_arrival       = data_read_init, // TODO: Add init
+        .on_arrival       = data_read_init, // TODO: Add init
         /*.on_departure     = request_read_close,*/
      	.on_read_ready	   = data_read,
  	},
@@ -529,6 +504,19 @@ smtp_done(struct selector_key* key) {
 }
 
 
+static int 
+create_file() {
+    char * path = "prueba_2";     // TMP
+    
+    FILE * file = fopen(path, "a+");     // + x si necesito tmb escribir
+                                    // si no existe, se crea
+    int fd = fileno(file);
+    if ( fd < 0 ) {
+        perror("Coundn't open file");  // ! desp sacar<
+    }
+    return fd;
+}
+
 void
 smtp_passive_accept(struct selector_key *key) {
     struct sockaddr_storage client_addr;
@@ -563,6 +551,12 @@ smtp_passive_accept(struct selector_key *key) {
 
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
+
+    state->fileFd = create_file();
+
+    if ( state->fileFd < 0)
+        goto fail;
+    
 
     //se mantiene el estado que se selecciona mientras no se cambie
     memcpy(&state->raw_buff_write, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);
