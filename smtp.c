@@ -15,6 +15,11 @@
 #include "metrics_handler.h"
 #include <fcntl.h>
 
+#define MAILDIR_TMP "~/Maildir/tmp"
+#define MAILDIR_NEW "~/Maildir/new"
+#define DATE_SPACE_SIZE 30 
+#define SIZE_MAIL 4000
+
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 /** lee todos los bytes del mensaje de tipo `hello' y inicia su proceso */
@@ -203,27 +208,54 @@ static void data_read_init(const unsigned st, struct selector_key *key){
     
     data_parser_init(p); 
     
-    // todo: creo dir Maildir/ , tmp/ y new/ en main:
-    // o tal vez si  lo pongo en el path ya se crea
-    // * convencion para nombrar file?   
-    char * path = "prueba";
-    
-                                    
-    int fd = open(path, O_WRONLY | O_CREAT | O_NONBLOCK, 0664);     
-                                                            
+    // todo: FILE NAME CONVENCION
+    /* Convencion para nombrar file */
+    //char * path = MAILDIR_TMP;
+    //time_t now = time(NULL);
+    //
+    //char hostname[256];     // LO PUEDO PONER EN MAIN Y QUE QUEDE COMO VAR GLOBAL
+    //gethostname(hostname, sizeof(hostname));
+
+    //int pid = getpid();
+    //char *filename = malloc(512);
+    //snprintf(filename, 512, "%ld.M%ldP%d.%s", now, now, pid, hostname);
+    char * path = "prueba_2";     // TMP
+    FILE * file = fopen(path, "a+");     // + x si necesito tmb escribir
+                                    // si no existe, se crea
+    int fd = fileno(file);
     if ( fd < 0 ) {
         perror("Coundn't open file");  // ! desp sacar<
         goto fail;
     }
+    
     state->fileFd = fd;
-     
+    // SIZE MAIL ? 
+
+    // Header
+    char * from_user = "agus\n"; //state->mailfrom = 
+    char * subject = "Hola";
+    buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
+    size_t count = 15;      // todo
+
+    char blank_space[DATE_SPACE_SIZE]={' '};
+    char header[100];
+    sprintf( header, "From: %s \nDate: %s\nSubject: %s\n",from_user,blank_space,subject);
+    //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
+    size_t header_size = strlen(header);
+    //memcpy(&state->raw_buff_file, header, header_size);
+    //buffer_write_adv(&state->file_buffer, header_size);
+    memcpy(&state->raw_buff_file, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);
+    buffer_write_adv(&state->file_buffer, WELCOME_RESPONSE_LEN);
+    
+
     if(SELECTOR_SUCCESS != selector_register(key->s, fd, &smtp_handler, OP_NOOP, state )) {
-        perror("Coundn't register file");  // ! desp sacar
+        perror("Coundn't register file");  // ! desp sacar 
         close(fd);
     }
 
     return;
 fail: 
+    close(fd);
     smtp_destroy(state);
 }
 
@@ -329,7 +361,7 @@ response_write(struct selector_key *key) {
         //leo cuanto hay para escribir
         uint8_t *ptr = buffer_read_ptr(wb, &count);
         ssize_t n = send(key->fd, ptr, count, MSG_NOSIGNAL);
-
+ struct smtp * state = ATTACHMENT(key);
         if(n>=0){
             buffer_read_adv(wb, n);
 
@@ -339,7 +371,9 @@ response_write(struct selector_key *key) {
                     //Check if I have to change to data
 				    // todo: TEMP
                     //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
-                    ret = DATA_READ;
+                    //ret =state->is_data ? DATA_READ:DATA_WRITE;
+                     ATTACHMENT(key)->is_data = true; 
+                     ret = DATA_READ;
                 }
                 else{
                     ret = ERROR;
@@ -355,6 +389,7 @@ response_write(struct selector_key *key) {
 
 static unsigned int data_write(struct selector_key * key){
     // escribo en el file
+        perror("llegue");
         unsigned  ret = DATA_WRITE;
         bool  error = false;
     
@@ -362,12 +397,9 @@ static unsigned int data_write(struct selector_key * key){
         //leo cuanto hay para escribir
         size_t count;
         
-
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        //ssize_t n = send(key->fd, ptr, count, 0);
-        // necesito  file fd del socket,+ efi, SI LO TENGO: key->s
-        ssize_t n = write(key->fd, wb,  count);
+        ssize_t n = write(key->fd, ptr ,  count);
         
         if (errno == EWOULDBLOCK) {         // * temp
             perror("write will block");
@@ -386,8 +418,8 @@ static unsigned int data_write(struct selector_key * key){
                     if (SELECTOR_SUCCESS == selector_set_interest( key->s,state->clientFd , OP_READ)){ 
                         state->fileFd = key->fd;
                         //Check if I have to change to data
-                        //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
-                        ret = REQUEST_READ;
+                        ret = DATA_READ; //ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
+                        //ret = REQUEST_READ;
                     }
                 }
                 else{
@@ -531,7 +563,6 @@ smtp_passive_accept(struct selector_key *key) {
 
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
-    buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
 
     //se mantiene el estado que se selecciona mientras no se cambie
     memcpy(&state->raw_buff_write, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);

@@ -34,6 +34,7 @@ struct smtp{
         int clientFd;
     };
 
+    int date_file_offset; 
 };
 /** maquina de estados general */
 enum smtp_state{
