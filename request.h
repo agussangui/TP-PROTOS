@@ -9,14 +9,16 @@
 #include "buffer.h"
 
 struct request {
-    char verb[10];
-    char arg1[32];
+    char verb[15];
+    char args[32];
 };
 
 //el lf es el done
 enum request_state {
     request_verb,
-    request_arg1,
+    request_args,
+    request_colon,
+    request_verb_space,
     request_data,
     request_cr,
     request_done,
@@ -28,7 +30,11 @@ struct request_parser {
     enum request_state state;
 
     uint8_t i;
+    uint8_t j;
 };
+
+#define BEGIN_EMAIL "<"
+#define END_EMAIL ">"
 
 /** inicializa el parser */
 void 
