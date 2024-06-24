@@ -12,14 +12,39 @@
 #include <unistd.h>
 #include <strings.h>
 #include "server_responses.h"
+#include "metrics_handler.h"
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 /** lee todos los bytes del mensaje de tipo `hello' y inicia su proceso */
 //retorno el estado al que voy
 
+int historic_connections = 0;
+int concurrent_connections = 0;
+
 static void
 smtp_done(struct selector_key* key);
+
+static void smtp_destroy(struct smtp * state){
+    free(state);
+}
+
+
+/* declaración forward de los handlers de selección de una conexión
+ * establecida entre un cliente y el proxy.
+ */
+static void smtp_read   (struct selector_key *key);
+static void smtp_write  (struct selector_key *key);
+//static void smtp_block  (struct selector_key *key);
+static void smtp_close  (struct selector_key *key);
+static const struct fd_handler smtp_handler = {
+        .handle_read   = smtp_read,
+        .handle_write  = smtp_write,
+        .handle_close  = smtp_close,
+        //.handle_block  = smtp_block,
+};
+
+
 
 static void request_read_init(const unsigned st, struct selector_key *key){
     struct request_parser * p= &ATTACHMENT(key)->request_parser; 
@@ -171,28 +196,70 @@ static unsigned int request_read_basic(struct selector_key * key, struct smtp * 
     return ret;
 }
 
+static void data_read_init(const unsigned st, struct selector_key *key){
+    struct data_parser * p= &ATTACHMENT(key)->data_parser; 
+    struct smtp * state = ATTACHMENT(key);
+    data_parser_init(p); 
+    
+    // todo: creo dir Maildir/ , tmp/ y new/ en main:
+    // o tal vez si  lo pongo en el path ya se crea
+    // * convencion para nombrar file?   
+    char * path = "prueba";
+    FILE * file = fopen(path, "a+");     // + x si necesito tmb escribir
+                                    // si no existe, se crea
+    int fd = fileno(file);
+    if ( fd < 0 ) {
+        perror("Coundn't  open file");  // ! desp sacar<
+        goto fail;
+    }
+    state->fileFd = fd;
+     
+    if(SELECTOR_SUCCESS != selector_register(key->s, fd, &smtp_handler, OP_WRITE, key->data )) {
+        perror("Coundn't  register file");  // ! desp sacar
+        close(fd);
+    }
+
+    return;
+fail: 
+    smtp_destroy(state);
+}
+
 static unsigned int data_read_basic(struct selector_key *key, struct smtp *state) {
 	unsigned int ret = DATA_READ;
 	bool error = false;
 
 	buffer * b = &state->read_buffer;
+    buffer * bw = &state->file_buffer;
 	enum data_state st = state->data_parser.state;
+
+// * 
+int i = state->data_parser.i ;
 
 	while(buffer_can_read(b)) {
 		const uint8_t c = buffer_read(b);
-		st = data_parser_feed(&state->data_parser, c);
-		if(data_is_done(st)) {
-			break;
-		}
+		// puedo ir leyendo aca 1. 
+        buffer_write(b,c);
+            //st = data_parser_feed(&state->data_parser, c);
+            //if(data_is_done(st)) {      // llegue al ultimo estado crlf sdi pongo desp lo de "250 queud, = data_done"
+            //    break;                  // ya termine de leer lo enviado
+            //}
 	}
 
-	struct selector_key key_file; // TODO: Fix this
+// escribo si lei , lo deje abajo
+    // done o no, escribo en el file
+
+    // TODO: Fix this
+	struct selector_key key_file = {  
+        .s = key->s,
+        .data = key->data,      // * no se si es necesario 
+        .fd = state->fileFd     
+        }; 
 
 	// write to file from buffer if is not empty
     // we stop reading so that we can write to file
     // file logic is similar 
-	if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_NOOP)) {
-		if (SELECTOR_SUCCESS == selector_set_interest_key(&key_file, OP_WRITE))
+	if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_NOOP)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
+		if (i != state->data_parser.i && SELECTOR_SUCCESS == selector_set_interest_key(&key_file, OP_WRITE))
 			ret = DATA_WRITE; // Vuelvo a request_read
 	} else {
 		ret = ERROR;
@@ -281,7 +348,40 @@ response_write(struct selector_key *key) {
 }
 
 static unsigned int data_write(struct selector_key * key){
-    //todo
+    // escribo en el file
+        unsigned  ret = DATA_WRITE;
+        bool  error = false;
+
+        buffer * wb = &ATTACHMENT(key)->file_buffer;
+        //leo cuanto hay para escribir
+        size_t count;
+
+        uint8_t *ptr = buffer_read_ptr(wb, &count);
+        ssize_t n = send(key->fd, ptr, count, MSG_NOSIGNAL);
+        // necesito  file fd del socket,+ efi, SI LO TENGO: key->s
+        //ssize_t n2 = sendfile(key->fd,   ptr, count, MSG_NOSIGNAL);
+         
+         if(n>=0){
+            buffer_read_adv(wb, n);
+
+            if (!buffer_can_read(wb)){
+                //check where to go (data or request)
+                if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
+                    //Check if I have to change to data
+				    //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
+                    ret = DATA_READ;
+                }
+                else{
+                    ret = ERROR;
+                }
+            }
+        }
+        else{
+            ret = ERROR;
+        }
+
+        return error ? ERROR : ret;
+
     return DATA_READ;
 }
 
@@ -302,8 +402,8 @@ static const struct state_definition client_statbl[] = {
     },
     {
     	.state             = DATA_READ,
-     	/*.on_arrival       = request_read_init, // TODO: Add init
-        .on_departure     = request_read_close,*/
+     	.on_arrival       = data_read_init, // TODO: Add init
+        /*.on_departure     = request_read_close,*/
      	.on_read_ready	   = data_read,
  	},
     {
@@ -318,24 +418,6 @@ static const struct state_definition client_statbl[] = {
     },
 };
 
-static void smtp_destroy(struct smtp * state){
-    free(state);
-}
-
-
-/* declaración forward de los handlers de selección de una conexión
- * establecida entre un cliente y el proxy.
- */
-static void smtp_read   (struct selector_key *key);
-static void smtp_write  (struct selector_key *key);
-//static void smtp_block  (struct selector_key *key);
-static void smtp_close  (struct selector_key *key);
-static const struct fd_handler smtp_handler = {
-        .handle_read   = smtp_read,
-        .handle_write  = smtp_write,
-        .handle_close  = smtp_close,
-        //.handle_block  = smtp_block,
-};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Handlers top level de la conexión pasiva.
@@ -379,6 +461,7 @@ smtp_write(struct selector_key *key) {
 
 static void
 smtp_close(struct selector_key *key) {
+    concurrent_connections--;
     smtp_destroy(ATTACHMENT(key));
 }
 
@@ -399,6 +482,9 @@ smtp_passive_accept(struct selector_key *key) {
     struct sockaddr_storage client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     struct smtp* state = NULL;
+
+    concurrent_connections++;
+    historic_connections++;
 
     const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
     if(client == -1) {
@@ -425,6 +511,7 @@ smtp_passive_accept(struct selector_key *key) {
 
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
+    buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
 
     //se mantiene el estado que se selecciona mientras no se cambie
     memcpy(&state->raw_buff_write, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);

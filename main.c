@@ -23,12 +23,13 @@
 #include <sys/socket.h>  // socket
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stdint.h>
 
 #include "smtp.h"
 #include "selector.h"
 //#include "socks5nio.h"
 #include "args.h"
-#include <stdint.h>
+#include "metrics_handler.h"
 
 static bool done = false;
 
@@ -39,8 +40,7 @@ sigterm_handler(const int signal) {
     done = true;
 }
 
-int
-main(int argc, char **argv) {
+int main(int argc, char **argv) {
     struct smtpargs args;
     parse_args(argc, argv, &args);
     // no tenemos nada que leer de stdin
@@ -79,6 +79,32 @@ main(int argc, char **argv) {
         goto finally;
     }
 
+
+    // Configuración para el servidor UDP
+    struct sockaddr_in6 metrics_addr;
+    memset(&metrics_addr, 0, sizeof(metrics_addr));
+    metrics_addr.sin6_family      = AF_INET6;
+    metrics_addr.sin6_addr        = in6addr_any;
+    metrics_addr.sin6_port        = htons(args.metrics_port);
+
+    // Creo el socket UDP 
+    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    if (metrics_server < 0) {
+        err_msg = "Unable to create UDP socket";
+        goto finally;
+    }
+
+    fprintf(stdout, "Listening on UDP port %d\n", args.metrics_port);
+    
+    setsockopt(metrics_server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+
+    // Bind para UDP
+    if (bind(metrics_server, (struct sockaddr*) &metrics_addr, sizeof(metrics_addr)) < 0) {
+        err_msg = "Unable to bind UDP socket";
+        goto finally;
+    }
+
+
     // registrar sigterm es útil para terminar el programa normalmente.
     // esto ayuda mucho en herramientas como valgrind.
     signal(SIGTERM, sigterm_handler);
@@ -105,16 +131,31 @@ main(int argc, char **argv) {
         err_msg = "unable to create selector";
         goto finally;
     }
-    const struct fd_handler smtp= {
+
+    const struct fd_handler smtp = {
         .handle_read       = smtp_passive_accept,
         .handle_write      = NULL,
         .handle_close      = NULL, // nada que liberar
     };
+
     ss = selector_register(selector, server, &smtp, OP_READ, NULL);
     if(ss != SELECTOR_SUCCESS) {
         err_msg = "registering fd";
         goto finally;
     }
+
+    const struct fd_handler udp_handler = {
+        .handle_read       = handle_metrics_read,
+        .handle_write      = NULL,
+        .handle_close      = NULL, // nada que liberar
+    };
+
+    ss = selector_register(selector, metrics_server, &udp_handler, OP_READ, NULL);
+        if(ss != SELECTOR_SUCCESS) {
+            err_msg = "registering UDP socket";
+            goto finally;
+        }
+
     for(;!done;) {
         err_msg = NULL;
         ss = selector_select(selector);
@@ -148,6 +189,10 @@ finally:
 
     if(server >= 0) {
         close(server);
+    }
+
+    if (metrics_server >= 0) {
+        close(metrics_server);
     }
     return ret;
 }
