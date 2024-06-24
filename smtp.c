@@ -239,7 +239,7 @@ static void write_header(struct selector_key * key) {
     
     uint8_t *ptr = buffer_read_ptr(&state->file_buffer, &count);
 
-    ssize_t n = write(state->fileFd , ptr ,  count);
+//    ssize_t n = write(state->fileFd , ptr ,  count);
     // check desp
 }
 
@@ -346,14 +346,14 @@ response_write(struct selector_key *key) {
 
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
-                if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
+                if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){ 
                     //Check if I have to change to data
 				    // todo: TEMP
                     //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
                     //ret =state->is_data ? DATA_READ:DATA_WRITE;
                      ATTACHMENT(key)->is_data = true; 
                      write_header(key);
-                     ret = DATA_READ;
+                     ret = DATA_WRITE;
                 }
                 else{
                     ret = ERROR;
