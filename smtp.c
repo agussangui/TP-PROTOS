@@ -12,11 +12,15 @@
 #include <unistd.h>
 #include <strings.h>
 #include "server_responses.h"
+#include "metrics_handler.h"
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 /** lee todos los bytes del mensaje de tipo `hello' y inicia su proceso */
 //retorno el estado al que voy
+
+int historic_connections = 0;
+int concurrent_connections = 0;
 
 static void
 smtp_done(struct selector_key* key);
@@ -369,6 +373,7 @@ smtp_write(struct selector_key *key) {
 
 static void
 smtp_close(struct selector_key *key) {
+    concurrent_connections--;
     smtp_destroy(ATTACHMENT(key));
 }
 
@@ -389,6 +394,9 @@ smtp_passive_accept(struct selector_key *key) {
     struct sockaddr_storage client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     struct smtp* state = NULL;
+
+    concurrent_connections++;
+    historic_connections++;
 
     const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
     if(client == -1) {

@@ -54,6 +54,8 @@ usage(const char *progname) {
         "   -L <conf  addr>  Dirección donde servirá el servicio de management.\n"
         "   -p <SOCKS port>  Puerto entrante conexiones SOCKS.\n"
         "   -P <conf port>   Puerto entrante conexiones configuracion\n"
+        "   -M <metrics addr> Dirección donde servirá el servicio de métricas.\n"  
+        "   -m <metrics port> Puerto entrante para conexiones de métricas.\n"
         "   -u <name>:<pass> Usuario y contraseña de usuario que puede usar el proxy. Hasta 10.\n"
         "   -v               Imprime información sobre la versión versión y termina.\n"
         "\n",
@@ -71,6 +73,9 @@ parse_args(const int argc, char **argv, struct smtpargs *args) {
     args->mng_addr   = "127.0.0.1";
     args->mng_port   = 8080;
 
+    args->metrics_addr   = "::";
+    args->metrics_port = 7030;
+
     //para transformaciones
     args->disectors_enabled = true;
 
@@ -85,7 +90,7 @@ parse_args(const int argc, char **argv, struct smtpargs *args) {
         };
 
         //para que sea possix compatible
-        c = getopt_long(argc, argv, "hl:L:Np:P:u:v", long_options, &option_index);
+        c = getopt_long(argc, argv, "hl:L:Np:P:m:M:u:v", long_options, &option_index);
         if (c == -1)
             break;
 
@@ -107,6 +112,12 @@ parse_args(const int argc, char **argv, struct smtpargs *args) {
                 break;
             case 'P':
                 args->mng_port   = port(optarg);
+                break;
+            case 'm':
+                args->metrics_addr = optarg;
+                break;
+            case 'M':
+                args->metrics_port = port(optarg);
                 break;
             case 'u':
                 if(nusers >= MAX_USERS) {
