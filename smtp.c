@@ -121,16 +121,16 @@ static void data_read_init(const unsigned st, struct selector_key *key){
     char * path = "prueba";
     
                                     
-    int fd = open(path, O_WRONLY | O_CREAT | O_NONBLOCK, 0664);     // + x si necesito tmb escribir
-                                                            // si no existe, se crea
+    int fd = open(path, O_WRONLY | O_CREAT | O_NONBLOCK, 0664);     
+                                                            
     if ( fd < 0 ) {
-        perror("Coundn't  open file");  // ! desp sacar<
+        perror("Coundn't open file");  // ! desp sacar<
         goto fail;
     }
     state->fileFd = fd;
      
     if(SELECTOR_SUCCESS != selector_register(key->s, fd, &smtp_handler, OP_NOOP, state )) {
-        perror("Coundn't  register file");  // ! desp sacar
+        perror("Coundn't register file");  // ! desp sacar
         close(fd);
     }
 
@@ -148,16 +148,16 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
 	enum data_state st = state->data_parser.state;
 
 // * 
-int i = state->data_parser.i ;
+    int i = state->data_parser.i ;
     
 	while(buffer_can_read(b)) {
 		const uint8_t c = buffer_read(b);
 		// puedo ir leyendo aca 1. 
         buffer_write(bw,c);
-            //st = data_parser_feed(&state->data_parser, c);
-            //if(data_is_done(st)) {      // llegue al ultimo estado crlf sdi pongo desp lo de "250 queud, = data_done"
-            //    break;                  // ya termine de leer lo enviado
-            //}
+        //    st = data_parser_feed(&state->data_parser, c);
+            if(data_is_done(st)) {      // llegue al ultimo estado crlf sdi pongo desp lo de "250 queued, = data_done"
+                break;                  // ya termine de leer lo enviado
+            }
 	}
     
 // escribo si lei , lo deje abajo
@@ -165,17 +165,16 @@ int i = state->data_parser.i ;
 
 	struct selector_key key_file = {  
         .s = key->s,
-        .data = key->data,      // * no se si es necesario 
-        .fd = state->fileFd     
-        }; 
+        .data = key->data,      
+        .fd = state->fileFd     }; 
     state->clientFd = key->fd;
 
 	// write to file from buffer if is not empty
     // we stop reading so that we can write to file
     // file logic is similar 
 	if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
-        // i != state->data_parser.i &&
-        if (  SELECTOR_SUCCESS == selector_set_interest_key(&key_file, OP_WRITE)) {
+        // i != state->data_parser.i && 
+        if ( SELECTOR_SUCCESS == selector_set_interest_key(&key_file, OP_WRITE)) {
             ret = DATA_WRITE; // Vuelvo a request_read
             }
 	} else {
