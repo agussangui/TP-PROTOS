@@ -33,6 +33,8 @@
 
 static bool done = false;
 
+unsigned short server_port = 2525;
+
 //para ctl c
 static void
 sigterm_handler(const int signal) {
@@ -45,6 +47,8 @@ int main(int argc, char **argv) {
     parse_args(argc, argv, &args);
     // no tenemos nada que leer de stdin
     close(0);
+
+    server_port = args.socks_port;
 
     const char       *err_msg = NULL;
     selector_status   ss      = SELECTOR_SUCCESS;
