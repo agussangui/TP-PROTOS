@@ -582,20 +582,22 @@ static unsigned int deliver_mail(struct selector_key * key){
         return ERROR;
     }
 
+    char date_buff[200];
+    fmt_date(date_buff);
     for(int i=0; i<state->receiverNum; i++) {
         for(int j=0; j<state->senderNum; j++)
-        fprintf(reports, "from %s to %s - %ld\n", state->mailfrom[j], state->rcptTo[i], state->time);
+        fprintf(reports, "from %s to %s - %ld.%d - %s\n", state->mailfrom[j], state->rcptTo[i], state->time, state->mail_id, date_buff);
     }
     fclose(reports);
     
     if(stats.verbose_mode) {
         char resp[DATA_DONE_RESPONSE_VERBOSE_LEN] = {0};
-        sprintf(resp, "%s%d%s", DATA_DONE_RESPONSE_VERBOSE, state->mail_id, DATA_DONE_RESPONSE_VERBOSE_END);
+        sprintf(resp, "%s%ld.%d%s", DATA_DONE_RESPONSE_VERBOSE, state->time, state->mail_id, DATA_DONE_RESPONSE_VERBOSE_END);
         if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_VERBOSE_LEN) ) 
         goto fail;
     } else {
         char resp[DATA_DONE_RESPONSE_LEN] = {0};
-        sprintf(resp ,"%s %d\r\n", DATA_DONE_RESPONSE, state->mail_id );
+        sprintf(resp ,"%s %ld.%d\r\n", DATA_DONE_RESPONSE, state->time, state->mail_id );
         if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_LEN) ) 
         goto fail;
     }

@@ -14,7 +14,7 @@
 #define DATA_INIT_RESPONSE "354 Go ahead\r\n"
 #define DATA_INIT_RESPONSE_LEN 14
 #define DATA_DONE_RESPONSE "250 2.0.0 Ok: queued as"
-#define DATA_DONE_RESPONSE_LEN 23 + 3 + 16
+#define DATA_DONE_RESPONSE_LEN 23 + 3 + 32
 
 #define WELCOME_RESPONSE_VERBOSE "Connection to proto.leak.com.ar %hu port [tcp/smtp] succeeded!\r\n"
 #define WELCOME_RESPONSE_VERBOSE_LEN 62
@@ -28,7 +28,7 @@
 #define DATA_INIT_RESPONSE_VERBOSE_LEN 67
 #define DATA_DONE_RESPONSE_VERBOSE "250 2.0.0 Ok: queued as "
 #define DATA_DONE_RESPONSE_VERBOSE_END " - Message accepted for delivery\r\n"
-#define DATA_DONE_RESPONSE_VERBOSE_LEN 60 + 16
+#define DATA_DONE_RESPONSE_VERBOSE_LEN 60 + 32
 
 /*------------------------------------------------- Errors -------------------------------------------------------*/
 #define ERROR_UNRECOGNIZABLE_COMMAND "502 5.5.1 Unrecognizable command\r\n"
