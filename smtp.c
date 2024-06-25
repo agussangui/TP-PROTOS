@@ -1,4 +1,3 @@
-#include "smtp.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -6,14 +5,19 @@
 #include <errno.h>
 #include <time.h>
 #include <arpa/inet.h>
-#include "buffer.h"
-#include "selector.h"
 #include <string.h>
 #include <unistd.h>
 #include <strings.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <pwd.h>
+
+#include "smtp.h"
+#include "buffer.h"
+#include "selector.h"
 #include "server_responses.h"
 #include "metrics_handler.h"
-#include <fcntl.h>
 
 #define MAILDIR_TMP "~/Maildir/tmp"
 #define MAILDIR_NEW "~/Maildir/new"
@@ -50,7 +54,72 @@ static const struct fd_handler smtp_handler = {
         //.handle_block  = smtp_block,
 };
 
+static void create_directory_if_not_exists(const char *path) {
+    struct stat st = {0};
 
+    if (stat(path, &st) == -1) {
+        mkdir(path, 0777);
+    }
+}
+
+static int 
+create_file(struct smtp * state) {
+    char path[200];
+    char temp_path[200];
+    char filename[300];
+    // Temporal
+    char * nombre = "pepe";
+
+    struct passwd *pw = getpwuid(getuid());
+    const char *home_dir = pw->pw_dir;
+
+    // Crear la carpeta en ~/Maildir si no existe
+    snprintf(path, sizeof(path), "%s/Maildir", home_dir);
+    create_directory_if_not_exists(path);
+
+    // Crear la carpeta en ~/Maildir/<nombre> si no existe
+    snprintf(path, sizeof(path), "%s/Maildir/%s", home_dir, nombre);
+    create_directory_if_not_exists(path);
+
+    // Crear la carpeta ~/Maildir/<nombre>/new si no existe
+    snprintf(temp_path, sizeof(temp_path), "%s/Maildir/%s/tmp", home_dir, nombre);
+    create_directory_if_not_exists(temp_path);
+
+    time_t t = time(NULL);
+    srand((unsigned) time(NULL));
+    int random_number = rand();
+
+    // Crear el nombre del archivo fecha.random
+    snprintf(filename, sizeof(filename), "%s/%ld.%d", temp_path, t, random_number);
+        
+    FILE * file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("There has been an error creating the file\n");
+        return 1;
+    }
+
+    int fd = fileno(file);
+    if ( fd < 0 ) {
+        perror("Coundn't open file");  // ! desp sacar<
+        return false;
+    }
+    state->file_fd = fd;
+    state->mail_id = random_number;
+    
+    return fd;
+}
+
+static bool 
+start_new_request( struct smtp * state, char * str, size_t str_size ) {
+
+    if ( !create_file(state) )
+        return false;
+    
+    //se mantiene el estado que se selecciona mientras no se cambie
+    memcpy(&state->raw_buff_write, str, str_size);
+    buffer_write_adv(&state->write_buffer, str_size);
+    return true;
+}
 
 static void request_read_init(const unsigned st, struct selector_key *key){
     struct request_parser * p= &ATTACHMENT(key)->request_parser; 
@@ -203,9 +272,10 @@ static unsigned int request_read_basic(struct selector_key * key, struct smtp * 
 }
 
 static void data_read_init(const unsigned st, struct selector_key *key){
-    
-    struct data_parser * p= &ATTACHMENT(key)->data_parser; 
-    
+    struct smtp * state = ATTACHMENT(key);
+    struct data_parser * p= &state->data_parser; 
+    p->output_buffer = &ATTACHMENT(key)->file_buffer;
+
     data_parser_init(p); 
     
     // todo: FILE NAME CONVENCION
@@ -231,16 +301,40 @@ static void write_header(struct selector_key * key) {
 
     char blank_space[DATE_SPACE_SIZE]={' '};
     char header[100];
+    // ! NO ES EFICIENTE
     sprintf( header, "From: %s\nDate: %s\nSubject: %s\n",from_user,blank_space,subject);
     //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
     size_t header_size = strlen(header);
+
     memcpy(&state->raw_buff_file, header, header_size);
     buffer_write_adv(&state->file_buffer, header_size);
     
     uint8_t *ptr = buffer_read_ptr(&state->file_buffer, &count);
 
-//    ssize_t n = write(state->fileFd , ptr ,  count);
-    // check desp
+}
+
+static unsigned int deliver_mail(struct selector_key * key){
+    struct smtp * state = ATTACHMENT(key);
+    int fd = state->file_fd;
+    // * creo q no pone el "successf deliv"
+    // write()
+    
+    // todo: move 
+    // todo: start date
+    close(fd);
+    
+    char resp[DATA_DONE_RESPONSE_LEN] = {0};
+    sprintf(resp ,"%s %d\r\n", DATA_DONE_RESPONSE, state->mail_id );
+    if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_LEN) ) 
+        goto fail;
+
+    if ( SELECTOR_SUCCESS != selector_set_interest_key(key, OP_WRITE))
+        close(fd);
+    
+    return RESPONSE_WRITE;
+
+fail:
+    return ERROR;
 }
 
 static unsigned int data_read_basic(struct selector_key *key, struct smtp *state) {
@@ -257,8 +351,7 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
 	while(buffer_can_read(b)) {
 		const uint8_t c = buffer_read(b);
 		// puedo ir leyendo aca 1. 
-        buffer_write(bw,c);
-        //    st = data_parser_feed(&state->data_parser, c);
+        st = data_parser_feed(&state->data_parser, c);
             if(data_is_done(st)) {      // llegue al ultimo estado crlf sdi pongo desp lo de "250 queued, = data_done"
                 break;                  // ya termine de leer lo enviado
             }
@@ -274,8 +367,8 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
     // file logic is similar 
 	if (i>0 && SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
         // i != state->data_parser.i && 
-        ret = DATA_WRITE; // Vuelvo a request_read
-        
+        ret = data_is_done(st)? DONE : DATA_WRITE; // Vuelvo a request_read
+         
 	} else {
 		ret = ERROR;
 	}
@@ -369,7 +462,7 @@ response_write(struct selector_key *key) {
 
 static unsigned int data_write(struct selector_key * key){
     // escribo en el file
-        perror("llegue");
+        
         unsigned  ret = DATA_WRITE;
         bool  error = false;
         struct smtp * state = ATTACHMENT(key);
@@ -380,7 +473,7 @@ static unsigned int data_write(struct selector_key * key){
         
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        ssize_t n = write(state->fileFd , ptr ,  count);
+        ssize_t n = write(state->file_fd , ptr ,  count);
         
         if (errno == EWOULDBLOCK) {         // * temp
             perror("write will block");
@@ -438,6 +531,7 @@ static const struct state_definition client_statbl[] = {
     },
     {
         .state            = DONE,
+        .on_write_ready   = deliver_mail,
     },
     {
         .state            = ERROR,
@@ -454,7 +548,7 @@ smtp_read(struct selector_key *key) {
     struct state_machine *stm   = &ATTACHMENT(key)->stm;
     const enum smtp_state st = stm_handler_read(stm, key);
 
-    if(ERROR == st || DONE == st) {
+    if(ERROR == st ) {
         smtp_done(key);
     }
 }
@@ -501,21 +595,11 @@ smtp_done(struct selector_key* key) {
         }
         close(key->fd);
     }
-}
-
-
-static int 
-create_file() {
-    char * path = "prueba_2";     // TMP
+    close( ATTACHMENT(key)->file_fd);
     
-    FILE * file = fopen(path, "a+");     // + x si necesito tmb escribir
-                                    // si no existe, se crea
-    int fd = fileno(file);
-    if ( fd < 0 ) {
-        perror("Coundn't open file");  // ! desp sacar<
-    }
-    return fd;
 }
+
+
 
 void
 smtp_passive_accept(struct selector_key *key) {
@@ -552,15 +636,8 @@ smtp_passive_accept(struct selector_key *key) {
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
 
-    state->fileFd = create_file();
-
-    if ( state->fileFd < 0)
+    if ( !start_new_request(state, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN)) 
         goto fail;
-    
-
-    //se mantiene el estado que se selecciona mientras no se cambie
-    memcpy(&state->raw_buff_write, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN);
-    buffer_write_adv(&state->write_buffer, WELCOME_RESPONSE_LEN);
 
     //indico la dir donde se guarde
     state->request_parser.request = &state->request;
@@ -571,7 +648,7 @@ smtp_passive_accept(struct selector_key *key) {
     }
     return ;
 
-    fail:
+fail:
     if(client != -1) {
         close(client);
     }

@@ -3,6 +3,8 @@
         "*.css": "tailwindcss",
         "data.h": "c",
         "selector.h": "c",
-        "metrics_client.h": "c"
+        "metrics_client.h": "c",
+        "stdio.h": "c",
+        "smtp.h": "c"
     }
 }

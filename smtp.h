@@ -29,10 +29,9 @@ struct smtp{
     char * mailfrom[1024];
     int senderNum;
     //recordar cerrar en el close
-    union {
-        int fileFd;
-        int clientFd;
-    };
+    
+    int file_fd;
+    int mail_id;
 
     int date_file_offset; 
 };

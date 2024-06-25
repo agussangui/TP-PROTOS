@@ -15,6 +15,8 @@
 #define RCPT_TO_RECEIVED_RESPONSE_LEN 14
 #define DATA_INIT_RESPONSE "354 Go ahead\r\n"
 #define DATA_INIT_RESPONSE_LEN 14
+#define DATA_DONE_RESPONSE "250 2.0.0 Ok: queued as"
+#define DATA_DONE_RESPONSE_LEN 23 + 3 + 16
 
 /*------------------------------------------------- Errors -------------------------------------------------------*/
 #define ERROR_UNRECOGNIZABLE_COMMAND "502 5.5.1 Unrecognizable command\r\n"
