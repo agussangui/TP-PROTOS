@@ -9,7 +9,7 @@
 #include "buffer.h"
 
 struct request {
-    char verb[15];
+    char verb[256];
     char args[256];
 };
 
