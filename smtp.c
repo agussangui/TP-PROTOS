@@ -23,6 +23,7 @@
 #define MAILDIR_NEW "~/Maildir/new"
 #define DATE_SPACE_SIZE 30 
 #define SIZE_MAIL 4000
+#define INVALID_FD -1
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
@@ -428,11 +429,10 @@ static unsigned int deliver_mail(struct selector_key * key){
     char path[200];
     
     // todo: start date
-    close(fd);
-
+    
     // Temporal
     char * nombre = "pepe";
-    // todo: move 
+    
 
     sprintf(path, "%s/Maildir/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
@@ -446,6 +446,8 @@ static unsigned int deliver_mail(struct selector_key * key){
         return ERROR;
     }
     
+    close(fd);
+
     char resp[DATA_DONE_RESPONSE_LEN] = {0};
     sprintf(resp ,"%s %d\r\n", DATA_DONE_RESPONSE, state->mail_id );
     if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_LEN) ) 
@@ -708,9 +710,11 @@ smtp_write(struct selector_key *key) {
 static void
 smtp_close(struct selector_key *key) {
     stats.concurrent_connections--;
+    
     int fd = ATTACHMENT(key)->file_fd;
-    if ( fd != -1)
-        close( fd );
+    if ( fd != INVALID_FD)                  
+        close(fd);
+    
     smtp_destroy(ATTACHMENT(key));
 }
 
@@ -765,12 +769,15 @@ smtp_passive_accept(struct selector_key *key) {
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
 
+    state->file_fd = INVALID_FD;
+
     if ( !start_new_request(state, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN)) 
         goto fail;
 
     //indico la dir donde se guarde
     state->request_parser.request = &state->request;
     request_parser_init(&state->request_parser); 
+    
 
     if(SELECTOR_SUCCESS != selector_register(key->s, client, &smtp_handler, OP_WRITE, state)) {
         goto fail;
