@@ -474,7 +474,6 @@ static unsigned int deliver_mail(struct selector_key * key){
     add_date_to_header(ATTACHMENT(key));
     
     char * nombre = state->hostname;
-    // todo: move 
 
     sprintf(path, "%s/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
@@ -489,7 +488,19 @@ static unsigned int deliver_mail(struct selector_key * key){
     }
     close(fd);
     state->file_fd = INVALID_FD;
+    
+    FILE * reports = fopen("/var/Maildir/reports.txt", "a");
+    if (reports == NULL) {
+        perror("There has been an error with reports document\n");
+        return false;
+    }
 
+    for(int i=0; i<state->receiverNum; i++) {
+        for(int j=0; j<state->senderNum; j++)
+        fprintf(reports, "from %s to %s - %d\n", state->mailfrom[j], state->rcptTo[i], state->time);
+    }
+    fclose(reports);
+    
     if(stats.verbose_mode) {
         char resp[DATA_DONE_RESPONSE_VERBOSE_LEN] = {0};
         sprintf(resp, "%s%d%s", DATA_DONE_RESPONSE_VERBOSE, state->mail_id, DATA_DONE_RESPONSE_VERBOSE_END);
@@ -657,6 +668,7 @@ static unsigned int data_write(struct selector_key * key){
         }
             
         if(n>=0){
+            stats.bytes_transferred += n;
             buffer_read_adv(wb, n);
 
             if (!buffer_can_read(wb)){
