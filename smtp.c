@@ -618,7 +618,7 @@ response_write(struct selector_key *key) {
         struct smtp * state = ATTACHMENT(key);
         if(n>=0){
             buffer_read_adv(wb, n);
-
+            stats.bytes_transferred += n;
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
                 if (state->is_data ) {

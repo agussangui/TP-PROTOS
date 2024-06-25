@@ -65,7 +65,7 @@ void print_options() {
     printf("3: Verbose mode ON\n");
     printf("4: Verbose mode OFF\n");
     printf("5: Verbose mode status\n");
-    printf("Pealse, enter your choice: ");
+    printf("Please, enter your choice: ");
 }
 
 void print_response(struct metrics_response *res, int command) {
