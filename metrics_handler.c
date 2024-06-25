@@ -39,7 +39,7 @@ static void process_metrics_request(struct metrics_request * req, struct metrics
             res->response = stats.concurrent_connections;
             break;
         case CMD_BYTES_TRANSFERRED: 
-            res->response = (int)stats.bytes_transferred;
+            res->response = stats.bytes_transferred;
             break;
         case CMD_VERBOSE_ON:
             stats.verbose_mode = true;

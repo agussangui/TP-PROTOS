@@ -42,7 +42,7 @@ struct metrics_response {
     uint8_t version;
     uint16_t identifier;
     uint8_t status;
-    uint8_t response;
+    uint32_t response;
 };
 
 #endif //TP_PROTOS_METRICS_H

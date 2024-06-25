@@ -105,7 +105,7 @@ enum smtp_state{
 struct stats {
     int historic_connections;
     int concurrent_connections;
-    size_t bytes_transferred;
+    int bytes_transferred;
     bool verbose_mode;
 };
 

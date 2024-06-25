@@ -614,7 +614,7 @@ response_write(struct selector_key *key) {
         buffer * wb = &ATTACHMENT(key)->write_buffer;
         //leo cuanto hay para escribir
         uint8_t *ptr = buffer_read_ptr(wb, &count);
-        ssize_t n = send(key->fd, ptr, count, MSG_NOSIGNAL);
+        int n = send(key->fd, ptr, count, MSG_NOSIGNAL);
         struct smtp * state = ATTACHMENT(key);
         if(n>=0){
             buffer_read_adv(wb, n);
@@ -660,7 +660,7 @@ static unsigned int data_write(struct selector_key * key){
         
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        ssize_t n = write(state->file_fd , ptr ,  count);
+        int n = write(state->file_fd , ptr ,  count);
         
         if (errno == EWOULDBLOCK) {         // * temp
             perror("write will block");
