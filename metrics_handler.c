@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "metrics_handler.h"
 #include "smtp.h"
@@ -38,7 +39,7 @@ static void process_metrics_request(struct metrics_request * req, struct metrics
             res->response = stats.concurrent_connections;
             break;
         case CMD_BYTES_TRANSFERRED: 
-            res->response = 10;
+            res->response = stats.bytes_transferred;
             break;
         case CMD_VERBOSE_ON:
             stats.verbose_mode = true;
