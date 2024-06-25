@@ -124,6 +124,8 @@ start_new_request( struct smtp * state, char * str, size_t str_size ) {
     //se mantiene el estado que se selecciona mientras no se cambie
     memcpy(&state->raw_buff_write, str, str_size);
     buffer_write_adv(&state->write_buffer, str_size);
+    
+    state->is_data = false;
     return true;
 }
 
@@ -423,6 +425,7 @@ static unsigned int deliver_mail(struct selector_key * key){
     int fd = state->file_fd;
     char new_filename[200];
     char temp_filename[200];
+    char path[200];
     // * creo q no pone el "successf deliv"
     // write()
     
@@ -433,6 +436,10 @@ static unsigned int deliver_mail(struct selector_key * key){
     // Temporal
     char * nombre = "pepe";
     // todo: move 
+
+    sprintf(path, "%s/Maildir/%s/new", state->home_dir, nombre);
+    create_directory_if_not_exists(path);
+
     sprintf(temp_filename, "%s/Maildir/%s/tmp/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
     sprintf(new_filename, "%s/Maildir/%s/new/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
 
@@ -552,24 +559,25 @@ response_write(struct selector_key *key) {
         //leo cuanto hay para escribir
         uint8_t *ptr = buffer_read_ptr(wb, &count);
         ssize_t n = send(key->fd, ptr, count, MSG_NOSIGNAL);
- struct smtp * state = ATTACHMENT(key);
+        struct smtp * state = ATTACHMENT(key);
         if(n>=0){
             buffer_read_adv(wb, n);
 
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
-                if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){ 
-                    //Check if I have to change to data
-				    // todo: TEMP
-                    //ret = ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
-                    //ret =state->is_data ? DATA_READ:DATA_WRITE;
-                     ATTACHMENT(key)->is_data = true; 
-                     write_header(key);
-                     ret = DATA_WRITE;
+                if (state->is_data ) {
+                    if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){ 
+                        write_header(key);
+                        ret = DATA_WRITE;
+                    }
+                } else { 
+                    if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
+                        ret = REQUEST_READ;
+                    }                    
                 }
-                else{
-                    ret = ERROR;
-                }
+                //else{
+                //    ret = ERROR;
+                //}
             }
         }
         else{
@@ -751,7 +759,7 @@ smtp_passive_accept(struct selector_key *key) {
     state->stm.max_state = ERROR;
     state->stm.states = client_statbl;
     stm_init(&state->stm);
-
+    
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
 
