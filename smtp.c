@@ -65,34 +65,35 @@ static void create_directory_if_not_exists(const char *path) {
 static int 
 create_file(struct smtp * state) {
     char path[200];
-    char temp_path[200];
-    char filename[300];
+    char filename[50];
+
     // Temporal
     char * nombre = "pepe";
 
     struct passwd *pw = getpwuid(getuid());
-    const char *home_dir = pw->pw_dir;
+    char *home_dir = pw->pw_dir;
 
     // Crear la carpeta en ~/Maildir si no existe
-    snprintf(path, sizeof(path), "%s/Maildir", home_dir);
+    sprintf(path,  "%s/Maildir", home_dir);
     create_directory_if_not_exists(path);
 
     // Crear la carpeta en ~/Maildir/<nombre> si no existe
-    snprintf(path, sizeof(path), "%s/Maildir/%s", home_dir, nombre);
+    sprintf(path,  "%s/Maildir/%s", home_dir, nombre);
     create_directory_if_not_exists(path);
 
     // Crear la carpeta ~/Maildir/<nombre>/new si no existe
-    snprintf(temp_path, sizeof(temp_path), "%s/Maildir/%s/tmp", home_dir, nombre);
-    create_directory_if_not_exists(temp_path);
+    sprintf(path,  "%s/Maildir/%s/tmp", home_dir, nombre);
+    create_directory_if_not_exists(path);
 
     time_t t = time(NULL);
     srand((unsigned) time(NULL));
     int random_number = rand();
 
     // Crear el nombre del archivo fecha.random
-    snprintf(filename, sizeof(filename), "%s/%ld.%d", temp_path, t, random_number);
+    sprintf(filename, "%ld.%d", t, random_number);
+    sprintf(path,  "%s/%ld.%d", path, t, random_number);
         
-    FILE * file = fopen(filename, "w");
+    FILE * file = fopen(path, "w");
     if (file == NULL) {
         perror("There has been an error creating the file\n");
         return 1;
@@ -105,7 +106,8 @@ create_file(struct smtp * state) {
     }
     state->file_fd = fd;
     state->mail_id = random_number;
-    
+    state->time = t;
+    state->home_dir = home_dir;
     return fd;
 }
 
@@ -316,12 +318,26 @@ static void write_header(struct selector_key * key) {
 static unsigned int deliver_mail(struct selector_key * key){
     struct smtp * state = ATTACHMENT(key);
     int fd = state->file_fd;
+    char new_filename[200];
+    char temp_filename[200];
     // * creo q no pone el "successf deliv"
     // write()
     
-    // todo: move 
+    
     // todo: start date
     close(fd);
+
+    // Temporal
+    char * nombre = "pepe";
+    // todo: move 
+    sprintf(temp_filename, "%s/Maildir/%s/tmp/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
+    sprintf(new_filename, "%s/Maildir/%s/new/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
+
+    // Muevo el archivo a la carpeta new
+    if (rename(temp_filename, new_filename) != 0) {
+        perror("There has been an error moving the mail to new directory");
+        return ERROR;
+    }
     
     char resp[DATA_DONE_RESPONSE_LEN] = {0};
     sprintf(resp ,"%s %d\r\n", DATA_DONE_RESPONSE, state->mail_id );

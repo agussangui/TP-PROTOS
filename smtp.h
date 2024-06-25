@@ -32,6 +32,8 @@ struct smtp{
     
     int file_fd;
     int mail_id;
+    time_t time;
+    char * home_dir;
 
     int date_file_offset; 
 };
