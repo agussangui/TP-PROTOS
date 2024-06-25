@@ -426,9 +426,6 @@ static unsigned int deliver_mail(struct selector_key * key){
     char new_filename[200];
     char temp_filename[200];
     char path[200];
-    // * creo q no pone el "successf deliv"
-    // write()
-    
     
     // todo: start date
     close(fd);
@@ -483,9 +480,6 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
             }
         i++;
 	}
-    
-// escribo si lei , lo deje abajo
-    // done o no, escribo en el file
 
 
 	// write to file from buffer if is not empty
@@ -714,6 +708,9 @@ smtp_write(struct selector_key *key) {
 static void
 smtp_close(struct selector_key *key) {
     stats.concurrent_connections--;
+    int fd = ATTACHMENT(key)->file_fd;
+    if ( fd != -1)
+        close( fd );
     smtp_destroy(ATTACHMENT(key));
 }
 
@@ -721,12 +718,13 @@ static void
 smtp_done(struct selector_key* key) {
     if(key->fd != -1) {
         //lo sacamos del selector 
+        int fd = key->fd;
         if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, key->fd)) {
             abort();
         }
-        close(key->fd);
+        close(fd);
     }
-    close( ATTACHMENT(key)->file_fd);
+    
     
 }
 
