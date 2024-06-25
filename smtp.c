@@ -81,7 +81,9 @@ static void create_directory_if_not_exists(const char *path) {
 
 static int 
 create_file(struct smtp * state) {
-    char path[200];
+    char mail_path[200];
+    char temp_path[200];
+    char temp_file_path[200];
     char filename[50];
 
     // Temporal
@@ -91,20 +93,20 @@ create_file(struct smtp * state) {
     char * home_dir = "/var/Maildir";
     create_directory_if_not_exists(home_dir);
 
-    sprintf(path,  "%s/%s", home_dir, nombre);
-    create_directory_if_not_exists(path);
+    sprintf(mail_path, "%s/%s", home_dir, nombre);
+    create_directory_if_not_exists(mail_path);
 
-    sprintf(path,  "%s/%s/tmp", home_dir, nombre);
-    create_directory_if_not_exists(path);
+    sprintf(temp_path, "%s/%s/tmp", home_dir, nombre);
+    create_directory_if_not_exists(temp_path);
 
     time_t t = time(NULL);
     srand((unsigned) time(NULL));
     int random_number = rand();
 
     sprintf(filename, "%ld.%d", t, random_number);
-    sprintf(path, "%s/%ld.%d", path, t, random_number);
+    sprintf(temp_file_path, "%s/%s/tmp/%ld.%d", home_dir, nombre, t, random_number);
         
-    FILE * file = fopen(path, "w");
+    FILE * file = fopen(temp_file_path, "w");
     if (file == NULL) {
         perror("There has been an error creating the file\n");
         return false;
@@ -563,8 +565,8 @@ static unsigned int deliver_mail(struct selector_key * key){
     sprintf(path, "%s/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
 
-    sprintf(temp_filename, "%s/%s/tmp/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
-    sprintf(new_filename, "%s/%s/new/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
+    sprintf(temp_filename, "%s/%s/tmp/%ld.%d", state->home_dir, nombre, state->time, state->mail_id);
+    sprintf(new_filename, "%s/%s/new/%ld.%d", state->home_dir, nombre, state->time, state->mail_id);
 
     // Muevo el archivo a la carpeta new
     if (rename(temp_filename, new_filename) != 0) {
@@ -582,7 +584,7 @@ static unsigned int deliver_mail(struct selector_key * key){
 
     for(int i=0; i<state->receiverNum; i++) {
         for(int j=0; j<state->senderNum; j++)
-        fprintf(reports, "from %s to %s - %d\n", state->mailfrom[j], state->rcptTo[i], state->time);
+        fprintf(reports, "from %s to %s - %ld\n", state->mailfrom[j], state->rcptTo[i], state->time);
     }
     fclose(reports);
     
