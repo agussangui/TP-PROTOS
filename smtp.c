@@ -58,6 +58,15 @@ static const struct fd_handler smtp_handler = {
         //.handle_block  = smtp_block,
 };
 
+static void resetSmtp(struct smtp * state){
+    state->is_mail_from_initiated = false;
+    state->is_rcpt_to_initiated = false;
+    state->is_data = false;
+
+    state->senderNum = 0;
+    state->receiverNum = 0;
+}
+
 static void create_directory_if_not_exists(const char *path) {
     struct stat st = {0};
 
@@ -72,7 +81,8 @@ create_file(struct smtp * state) {
     char filename[50];
 
     // Temporal
-    char * nombre = "pepe";
+//    char * nombre = "pepe";
+    char * nombre = state->hostname;
 
     char * home_dir = "/var/Maildir";
     create_directory_if_not_exists(home_dir);
@@ -93,7 +103,7 @@ create_file(struct smtp * state) {
     FILE * file = fopen(path, "w");
     if (file == NULL) {
         perror("There has been an error creating the file\n");
-        return 1;
+        return false;
     }
 
     int fd = fileno(file);
@@ -115,11 +125,12 @@ start_new_request( struct smtp * state, char * str, size_t str_size ) {
     uint8_t *ptr;
     ptr = buffer_write_ptr(&state->write_buffer, &count);
 
-    if ( !create_file(state) )
-        return false;
+//    if ( !create_file(state) )
+//        return false;
     
     memcpy(ptr, str, str_size);
     buffer_write_adv(&state->write_buffer, str_size);
+    resetSmtp(state);
     
     state->is_data = false;
     return true;
@@ -150,15 +161,6 @@ static enum smtp_state handleErrors(struct smtp * state, char * error, size_t le
     return ERROR;
 }
 
-static void resetSmtp(struct smtp * state){
-    state->is_mail_from_initiated = false;
-    state->is_rcpt_to_initiated = false;
-    state->is_data = false;
-
-    state->senderNum = 0;
-    state->receiverNum = 0;
-}
-
 static enum smtp_state request_process(struct smtp * state){
 
     if (strcasecmp(state->request_parser.request->verb, "ehlo") == 0){
@@ -175,6 +177,7 @@ static enum smtp_state request_process(struct smtp * state){
             buffer_write_adv(&state->write_buffer, ehlo_response_len);
 
             char * hostnamePassed = calloc(1, hostnameLen + 1);
+            memcpy(hostnamePassed, state->request_parser.request->args, hostnameLen);
             state->hostname = hostnamePassed;
             state->is_helo_done = true;
             resetSmtp(state);
@@ -194,6 +197,7 @@ static enum smtp_state request_process(struct smtp * state){
 
             size_t hostnameLen = strlen(state->request_parser.request->args);
             char * hostnamePassed = calloc(1, hostnameLen + 1);
+            memcpy(hostnamePassed, state->request_parser.request->args, hostnameLen);
             state->hostname = hostnamePassed;            
             state->is_helo_done = true;
             resetSmtp(state);
@@ -365,7 +369,7 @@ static enum smtp_state request_process(struct smtp * state){
             uint8_t *ptr;
             ptr = buffer_write_ptr(&state->write_buffer, &count);
 
-            if (count > DATA_INIT_RESPONSE_LEN || (count > DATA_INIT_RESPONSE_VERBOSE_LEN && stats.verbose_mode)){
+            if ((count > DATA_INIT_RESPONSE_LEN || (count > DATA_INIT_RESPONSE_VERBOSE_LEN && stats.verbose_mode)) && create_file(state)) {
                 if(stats.verbose_mode) {
                     memcpy(ptr, DATA_INIT_RESPONSE_VERBOSE, DATA_INIT_RESPONSE_VERBOSE_LEN);
                     buffer_write_adv(&state->write_buffer, DATA_INIT_RESPONSE_VERBOSE_LEN);
@@ -424,7 +428,17 @@ static void data_read_init(const unsigned st, struct selector_key *key){
 
 static void write_header(struct selector_key * key) {
     struct smtp * state = ATTACHMENT(key);
-    char * from_user = "agus"; //state->mailfrom = 
+    //check if correct, format: mail1, mail2
+//    char * mailFromConcat;
+//    for (int i = 0; i < state->senderNum; i++){
+//        strcat(mailFromConcat, state->mailfrom[i]);
+//        if (i != state->senderNum -1){
+//            strcat(mailFromConcat, ",");
+//        }
+//    }
+    char * from_user = state->hostname;
+//    char * from_user = mailFromConcat;
+//    char * from_user = "pepe"; //state->mailfrom = 
 
     buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
     size_t count = 15;      // todo
@@ -457,7 +471,8 @@ static unsigned int deliver_mail(struct selector_key * key){
     close(fd);
 
     // Temporal
-    char * nombre = "pepe";
+//    char * nombre = "pepe";
+    char * nombre = state->hostname;
     // todo: move 
 
     sprintf(path, "%s/%s/new", state->home_dir, nombre);
