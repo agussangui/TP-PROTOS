@@ -657,6 +657,7 @@ static unsigned int data_write(struct selector_key * key){
         }
             
         if(n>=0){
+            stats.bytes_transferred += n;
             buffer_read_adv(wb, n);
 
             if (!buffer_can_read(wb)){
