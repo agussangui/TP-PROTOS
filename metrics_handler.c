@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include "metrics_handler.h"
+#include "smtp.h"
 
 
 static void process_metrics_request(struct metrics_request * req, struct metrics_response * res) {
@@ -31,13 +32,24 @@ static void process_metrics_request(struct metrics_request * req, struct metrics
 
     switch (req->command) {
         case CMD_HISTORICAL:
-            res->response = historic_connections;
+            res->response = stats.historic_connections;
             break;
         case CMD_CONCURRENT:
-            res->response = concurrent_connections;
+            res->response = stats.concurrent_connections;
             break;
         case CMD_BYTES_TRANSFERRED: 
             res->response = 10;
+            break;
+        case CMD_VERBOSE_ON:
+            stats.verbose_mode = true;
+            res->response = stats.verbose_mode;
+            break;
+        case CMD_VERBOSE_OFF:
+            stats.verbose_mode = false;
+            res->response = stats.verbose_mode;
+            break;
+        case CMD_VERBOSE_STATUS:
+            res->response = stats.verbose_mode;
             break;
         default:
             res->status = STATUS_INVALID_COMMAND;
@@ -47,13 +59,13 @@ static void process_metrics_request(struct metrics_request * req, struct metrics
 }
 
 void handle_metrics_read(struct selector_key *key) {
-    int udp_server = key->fd;
+    int metrics_server = key->fd;
     struct sockaddr_in6 client_addr;
     socklen_t client_len = sizeof(client_addr);
     struct metrics_response res;
     uint8_t buffer[sizeof(struct metrics_request)];
 
-    ssize_t nbytes = recvfrom(udp_server, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &client_len);
+    ssize_t nbytes = recvfrom(metrics_server, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &client_len);
     if (nbytes < 0) {
         if (errno != EWOULDBLOCK){
             perror("Reception failed");
@@ -71,5 +83,5 @@ void handle_metrics_read(struct selector_key *key) {
     process_metrics_request(req, &res);
 
     // Enviar respuesta al cliente UDP
-    sendto(udp_server, &res, sizeof(res), 0, (struct sockaddr *)&client_addr, client_len);
+    sendto(metrics_server, &res, sizeof(res), 0, (struct sockaddr *)&client_addr, client_len);
 }

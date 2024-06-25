@@ -8,6 +8,10 @@
 #include "request.h"
 #include "data.h"
 
+#define DOMAIN_SUPPORTED "@proto.leak.com.ar"
+#define MAX_RECIPIENTS_SUPPORTED 128
+#define MAX_MAIL_FROM_SUPPORTED 128
+
 struct smtp{
     /* información del cliente */
     struct sockaddr_storage client_addr;
@@ -25,9 +29,17 @@ struct smtp{
 	struct data_parser data_parser;
 
     bool is_data;
+    bool is_helo_done;
+    bool is_mail_from_initiated;
+    bool is_rcpt_to_initiated;
 
-    char * mailfrom[1024];
+    char * hostname;
+    char * mailfrom[MAX_MAIL_FROM_SUPPORTED];
+    //el minimo en SMTP es de 100
+    char * rcptTo[MAX_RECIPIENTS_SUPPORTED];
+
     int senderNum;
+    int receiverNum;
     //recordar cerrar en el close
     
     int file_fd;
@@ -89,9 +101,15 @@ enum smtp_state{
     ERROR,
 };
 
-struct current_stats {
-    int historic_connections, concurrent_connections, bytes_transferred;
+
+struct stats {
+    int historic_connections;
+    int concurrent_connections;
+    int bytes_transferred;
+    bool verbose_mode;
 };
+
+extern struct stats stats;
 
 void
 smtp_passive_accept(struct selector_key *key);
