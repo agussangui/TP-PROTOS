@@ -74,28 +74,21 @@ create_file(struct smtp * state) {
     // Temporal
     char * nombre = "pepe";
 
-    struct passwd *pw = getpwuid(getuid());
-    char *home_dir = pw->pw_dir;
+    char * home_dir = "/var/Maildir";
+    create_directory_if_not_exists(home_dir);
 
-    // Crear la carpeta en ~/Maildir si no existe
-    sprintf(path,  "%s/Maildir", home_dir);
+    sprintf(path,  "%s/%s", home_dir, nombre);
     create_directory_if_not_exists(path);
 
-    // Crear la carpeta en ~/Maildir/<nombre> si no existe
-    sprintf(path,  "%s/Maildir/%s", home_dir, nombre);
-    create_directory_if_not_exists(path);
-
-    // Crear la carpeta ~/Maildir/<nombre>/new si no existe
-    sprintf(path,  "%s/Maildir/%s/tmp", home_dir, nombre);
+    sprintf(path,  "%s/%s/tmp", home_dir, nombre);
     create_directory_if_not_exists(path);
 
     time_t t = time(NULL);
     srand((unsigned) time(NULL));
     int random_number = rand();
 
-    // Crear el nombre del archivo fecha.random
     sprintf(filename, "%ld.%d", t, random_number);
-    sprintf(path,  "%s/%ld.%d", path, t, random_number);
+    sprintf(path, "%s/%ld.%d", path, t, random_number);
         
     FILE * file = fopen(path, "w");
     if (file == NULL) {
@@ -105,7 +98,7 @@ create_file(struct smtp * state) {
 
     int fd = fileno(file);
     if ( fd < 0 ) {
-        perror("Coundn't open file");  // ! desp sacar<
+        perror("Coundn't open file");
         return false;
     }
     state->file_fd = fd;
@@ -437,11 +430,11 @@ static unsigned int deliver_mail(struct selector_key * key){
     char * nombre = "pepe";
     // todo: move 
 
-    sprintf(path, "%s/Maildir/%s/new", state->home_dir, nombre);
+    sprintf(path, "%s/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
 
-    sprintf(temp_filename, "%s/Maildir/%s/tmp/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
-    sprintf(new_filename, "%s/Maildir/%s/new/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
+    sprintf(temp_filename, "%s/%s/tmp/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
+    sprintf(new_filename, "%s/%s/new/%ld.%ld", state->home_dir, nombre, state->time, state->mail_id);
 
     // Muevo el archivo a la carpeta new
     if (rename(temp_filename, new_filename) != 0) {
