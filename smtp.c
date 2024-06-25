@@ -21,8 +21,10 @@
 
 #define MAILDIR_TMP "~/Maildir/tmp"
 #define MAILDIR_NEW "~/Maildir/new"
-#define DATE_SPACE_SIZE 30 
+#define DATE_SPACE_SIZE 40 
 #define SIZE_MAIL 4000
+#define DATE_BUF_SIZE 200
+#define TIME_ZONE 6
 #define INVALID_FD -1
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
@@ -58,6 +60,7 @@ static const struct fd_handler smtp_handler = {
         .handle_close  = smtp_close,
         //.handle_block  = smtp_block,
 };
+static unsigned int data_write(struct selector_key * key);
 
 static void resetSmtp(struct smtp * state){
     state->is_mail_from_initiated = false;
@@ -106,6 +109,8 @@ create_file(struct smtp * state) {
         perror("There has been an error creating the file\n");
         return false;
     }
+
+    //buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
 
     int fd = fileno(file);
     if ( fd < 0 ) {
@@ -242,7 +247,7 @@ static enum smtp_state request_process(struct smtp * state){
             char * domain = strchr(sender, '@');
             if (strcasecmp(domain, DOMAIN_SUPPORTED)){
                 //change error type -> more specific
-                return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+                return handleErrors(state, REQUEST_NOT_TAKEN_RESPONSE, REQUEST_NOT_TAKEN_RESPONSE_LEN);
             }
             if (count > MAIL_FROM_RECEIVED_RESPONSE_LEN){
                 if(stats.verbose_mode) {
@@ -309,7 +314,7 @@ static enum smtp_state request_process(struct smtp * state){
                     char * domain = strchr(endEmail, '@');
                     if (strcasecmp(domain, DOMAIN_SUPPORTED)){
                         //more specific
-                        return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+                        return handleErrors(state, REQUEST_NOT_TAKEN_RESPONSE, REQUEST_NOT_TAKEN_RESPONSE_LEN);
                     }else{
                         size_t mailLen = strlen(endEmail);
                         char * mail = calloc(1, mailLen + 1);
@@ -335,9 +340,10 @@ static enum smtp_state request_process(struct smtp * state){
 
             if (count > RCPT_TO_RECEIVED_RESPONSE_LEN){
                 size_t i = 0;
-                for (i = 0; i < currentRecipient; i++, state->receiverNum++){
+                for (i = 0; i < currentRecipient; i++){
                     state->rcptTo[ state->receiverNum + i] = provisionalRecipients[i];
                 }
+                state->receiverNum += currentRecipient;
                 state->is_rcpt_to_initiated=true;
                 if(stats.verbose_mode) {
                     if(i > 1) {
@@ -379,6 +385,7 @@ static enum smtp_state request_process(struct smtp * state){
                     buffer_write_adv(&state->write_buffer, DATA_INIT_RESPONSE_LEN);
                 }
                 state->is_data = true;
+                buffer_read(&state->read_buffer);
                 return RESPONSE_WRITE;
             }else{
                 return ERROR;
@@ -430,26 +437,52 @@ static void data_read_init(const unsigned st, struct selector_key *key){
 static void write_header(struct selector_key * key) {
     struct smtp * state = ATTACHMENT(key);
     //check if correct, format: mail1, mail2
-//    char * mailFromConcat;
-//    for (int i = 0; i < state->senderNum; i++){
-//        strcat(mailFromConcat, state->mailfrom[i]);
-//        if (i != state->senderNum -1){
-//            strcat(mailFromConcat, ",");
-//        }
-//    }
-    char * from_user = state->hostname;
-//    char * from_user = mailFromConcat;
-//    char * from_user = "pepe"; //state->mailfrom = 
+    char * comma = calloc(1, 3);
+    comma = ", ";
+    size_t total_length = 0;
+    for (int i = 0; i < state->senderNum; i++) {
+        total_length += strlen(state->mailfrom[i]);
+    }
+    total_length += 2 * (state->senderNum-1);
+    char * mailFromConcat = calloc(1, total_length + 1);
+    for (int i = 0; i < state->senderNum; i++){
+        strcat(mailFromConcat, state->mailfrom[i]);
+        if (i != state->senderNum -1){
+            strcat(mailFromConcat, comma);
+        }
+    }
+    char * from_user = mailFromConcat;
+
+    size_t total_len = 0;
+    for (int i = 0; i < state->receiverNum; i++) {
+        total_len += strlen(state->rcptTo[i]);
+    }
+    total_len += 2 * (state->receiverNum -1);
+    char * mailToConcat = calloc(1, total_len + 1);
+    for (int i = 0; i < state->receiverNum; i++){
+        strcat(mailToConcat, state->rcptTo[i]);
+        if (i != state->receiverNum-1){
+            strcat(mailToConcat, comma);
+        }
+    }
+    char * to_user = mailToConcat;
 
     buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
     size_t count = 15;      // todo
 
-    char blank_space[DATE_SPACE_SIZE]={' '};
-    char header[100];
+    char * blank_space = calloc(1, DATE_SPACE_SIZE + 1);
+    for (int i = 0; i < DATE_SPACE_SIZE; i++){
+        blank_space[i] = ' ';
+    }
+//    char * blank = calloc(DATE_SPACE_SIZE);
+    char header[1500];
     // ! NO ES EFICIENTE
-    sprintf( header, "From: %s\n",from_user,blank_space);
+    sprintf( header, "From: %s\r\nSender: %s@proto.leak.com.ar\r\nTo: %s\r\n%s\r\n",from_user, state->hostname,to_user,blank_space);
     //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
     size_t header_size = strlen(header);
+    int date_offset = 6+ strlen(from_user)+2 + 8 + strlen(to_user) + strlen(state->hostname) + 24+ 2;
+    state->date_file_offset = date_offset;  
+    stats.bytes_transferred += date_offset;
 
     memcpy(&state->raw_buff_file, header, header_size);
     buffer_write_adv(&state->file_buffer, header_size);
@@ -458,10 +491,58 @@ static void write_header(struct selector_key * key) {
 
 }
 
-static void add_date_to_header(struct smtp * state) {
-    int ofset = state->date_file_offset;
+const char* get_day_of_week(int wday) {
+    const char* days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    return days[wday];
+}
+
+// Función para obtener el nombre del mes
+const char* get_month(int mon) {
+    const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    return months[mon];
+}
+
+
+
+static void fmt_date (char* buffer) {
+    time_t rawtime;
+    struct tm * timeinfo;
+    char zone[TIME_ZONE]; 
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+
+    strftime(zone, sizeof(zone), "%z", timeinfo);
+
+    snprintf(buffer, DATE_BUF_SIZE, "Date: %s, %02d %s %04d %02d:%02d:%02d %s",
+             get_day_of_week(timeinfo->tm_wday),
+             timeinfo->tm_mday,
+             get_month(timeinfo->tm_mon),
+             timeinfo->tm_year + 1900,
+             timeinfo->tm_hour,
+             timeinfo->tm_min,
+             timeinfo->tm_sec,
+             zone);
+}
+
+static bool add_date_to_header(struct smtp * state, char * date_buff) {
+    int offset = state->date_file_offset;
+    if (lseek(state->file_fd,offset,SEEK_SET) == -1 ) {
+        perror("Couldn't move file offset");
+        return false;
+    }
+        
+    fmt_date(date_buff);
+    ssize_t n = write(state->file_fd , date_buff , strlen(date_buff));
     
-    //sprintf("Date: %s \n");
+    stats.bytes_transferred +=n;
+
+    if (errno == EWOULDBLOCK) {         
+        perror("write will block");
+        return false;
+    }
+    
+    return true;
 }
 
 static unsigned int deliver_mail(struct selector_key * key){
@@ -469,9 +550,13 @@ static unsigned int deliver_mail(struct selector_key * key){
     int fd = state->file_fd;
     char new_filename[200];
     char temp_filename[200];
+    char date[200];
     char path[200];
     
-    add_date_to_header(ATTACHMENT(key));
+    if( !add_date_to_header(ATTACHMENT(key), date)) {
+        perror("Couldn't add date header");
+        return ERROR;
+    }
     
     char * nombre = state->hostname;
 
@@ -492,7 +577,7 @@ static unsigned int deliver_mail(struct selector_key * key){
     FILE * reports = fopen("/var/Maildir/reports.txt", "a");
     if (reports == NULL) {
         perror("There has been an error with reports document\n");
-        return false;
+        return ERROR;
     }
 
     for(int i=0; i<state->receiverNum; i++) {
@@ -546,10 +631,10 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
 
 	// write to file from buffer if is not empty
     // we stop reading so that we can write to file
-    // file logic is similar 
-	if (i>0 && SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
+    // file logic is similar  
+	if (i>0 && SELECTOR_SUCCESS == selector_set_interest_key(key, OP_NOOP)) {  // * podria seguir leyenedo y optimizo, pero se complica mas
         // i != state->data_parser.i && 
-        ret = data_is_done(st)? DONE : DATA_WRITE; // Vuelvo a request_read
+        ret = data_write(key); // Vuelvo a request_read
          
 	} else {
 		ret = ERROR;
@@ -623,9 +708,9 @@ response_write(struct selector_key *key) {
                 //check where to go (data or request)
                 if (state->is_data ) {
                     
-                    if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){ 
+                    if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
                         write_header(key);
-                        ret = DATA_WRITE;
+                        ret = DATA_READ;
                     } else 
                         ret = error;
 
@@ -673,11 +758,19 @@ static unsigned int data_write(struct selector_key * key){
 
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
-                    if (SELECTOR_SUCCESS == selector_set_interest_key( key, OP_READ)){ 
-                        //state->fileFd = key->fd;
-                        //Check if I have to change to data
-                        ret = DATA_READ; //ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
-                        //ret = REQUEST_READ;
+                    if (data_is_done(state->data_parser.state)) {
+                        if (SELECTOR_SUCCESS == selector_set_interest_key( key, OP_WRITE)){ 
+                            ret = DONE;
+                        }
+
+                    } else {
+                        
+                        if (SELECTOR_SUCCESS == selector_set_interest_key( key, OP_READ)){ 
+                            //state->fileFd = key->fd;
+                            //Check if I have to change to data
+                            ret = DATA_READ; //ATTACHMENT(key)->is_data ? DATA_READ : REQUEST_READ;
+                            //ret = REQUEST_READ;
+                        }
                     }
                 }
                 else{
@@ -709,13 +802,13 @@ static const struct state_definition client_statbl[] = {
     },
     {
     	.state             = DATA_READ,
-        .on_arrival       = data_read_init, // TODO: Add init
+        .on_arrival       = data_read_init, 
         /*.on_departure     = request_read_close,*/
      	.on_read_ready	   = data_read,
  	},
     {
     	.state             = DATA_WRITE,
-        .on_write_ready	   = data_write,
+        // /.on_write_ready	   = data_write,
     },
     {
         .state            = DONE,
