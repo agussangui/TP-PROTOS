@@ -395,14 +395,14 @@ static void data_read_init(const unsigned st, struct selector_key *key){
 static void write_header(struct selector_key * key) {
     struct smtp * state = ATTACHMENT(key);
     char * from_user = "agus"; //state->mailfrom = 
-    char * subject = "Hola";
+
     buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
     size_t count = 15;      // todo
 
     char blank_space[DATE_SPACE_SIZE]={' '};
     char header[100];
     // ! NO ES EFICIENTE
-    sprintf( header, "From: %s\nDate: %s\nSubject: %s\n",from_user,blank_space,subject);
+    sprintf( header, "From: %s\nDate: %s\n",from_user,blank_space);
     //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
     size_t header_size = strlen(header);
 
@@ -559,19 +559,23 @@ response_write(struct selector_key *key) {
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
                 if (state->is_data ) {
+                    
                     if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_WRITE)){ 
                         write_header(key);
                         ret = DATA_WRITE;
-                    }
+                    } else 
+                        ret = error;
+
                 } else { 
+
                     if (SELECTOR_SUCCESS == selector_set_interest_key(key, OP_READ)){ 
                         ret = REQUEST_READ;
-                    }                    
+                    } else 
+                        ret = ERROR;
+                
                 }
-                //else{
-                //    ret = ERROR;
-                //}
             }
+        
         }
         else{
             ret = ERROR;
