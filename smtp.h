@@ -111,6 +111,8 @@ struct stats {
 
 extern struct stats stats;
 
+extern unsigned short server_port;
+
 void
 smtp_passive_accept(struct selector_key *key);
 

@@ -23,6 +23,7 @@
 #define MAILDIR_NEW "~/Maildir/new"
 #define DATE_SPACE_SIZE 30 
 #define SIZE_MAIL 4000
+#define INVALID_FD -1
 
 #define ATTACHMENT(key) ( (struct smtp *)(key)->data)
 #define N(x) (sizeof(x)/sizeof((x)[0]))
@@ -121,11 +122,14 @@ create_file(struct smtp * state) {
 static bool 
 start_new_request( struct smtp * state, char * str, size_t str_size ) {
 
+    size_t count;
+    uint8_t *ptr;
+    ptr = buffer_write_ptr(&state->write_buffer, &count);
+
 //    if ( !create_file(state) )
 //        return false;
     
-    //se mantiene el estado que se selecciona mientras no se cambie
-    memcpy(&state->raw_buff_write, str, str_size);
+    memcpy(ptr, str, str_size);
     buffer_write_adv(&state->write_buffer, str_size);
     resetSmtp(state);
     
@@ -241,8 +245,16 @@ static enum smtp_state request_process(struct smtp * state){
                 return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
             }
             if (count > MAIL_FROM_RECEIVED_RESPONSE_LEN){
-                memcpy(ptr, MAIL_FROM_RECEIVED_RESPONSE, MAIL_FROM_RECEIVED_RESPONSE_LEN);
-                buffer_write_adv(&state->write_buffer, MAIL_FROM_RECEIVED_RESPONSE_LEN);
+                if(stats.verbose_mode) {
+                    char from_response[1024];
+                    size_t n = sprintf(from_response, MAIL_FROM_RECEIVED_RESPONSE_VERBOSE, sender);
+                    int from_response_len = strlen(from_response);
+                    memcpy(ptr, from_response, from_response_len);
+                    buffer_write_adv(&state->write_buffer, from_response_len);
+                } else {
+                    memcpy(ptr, MAIL_FROM_RECEIVED_RESPONSE, MAIL_FROM_RECEIVED_RESPONSE_LEN);
+                    buffer_write_adv(&state->write_buffer, MAIL_FROM_RECEIVED_RESPONSE_LEN);
+                }
                 size_t mailLen = strlen(sender);
 
                 //TODO: free necesario 
@@ -322,13 +334,27 @@ static enum smtp_state request_process(struct smtp * state){
             }
 
             if (count > RCPT_TO_RECEIVED_RESPONSE_LEN){
-                memcpy(ptr, RCPT_TO_RECEIVED_RESPONSE, RCPT_TO_RECEIVED_RESPONSE_LEN);
-                buffer_write_adv(&state->write_buffer, RCPT_TO_RECEIVED_RESPONSE_LEN);
-                for (size_t i = 0; i < currentRecipient; i++){ 
+                size_t i = 0;
+                for (i = 0; i < currentRecipient; i++){
                     state->rcptTo[ state->receiverNum + i] = provisionalRecipients[i];
                 }
                 state->receiverNum += currentRecipient;
                 state->is_rcpt_to_initiated=true;
+                if(stats.verbose_mode) {
+                    if(i > 1) {
+                        memcpy(ptr, RCPT_TO_MULTIPLE_RECEIVED_RESPONSE_VERBOSE, RCPT_TO_MULTIPLE_RECEIVED_RESPONSE_VERBOSE_LEN);
+                        buffer_write_adv(&state->write_buffer, RCPT_TO_MULTIPLE_RECEIVED_RESPONSE_VERBOSE_LEN);
+                    } else {
+                        char to_response[1024];
+                        size_t n = sprintf(to_response, RCPT_TO_RECEIVED_RESPONSE_VERBOSE, state->rcptTo[0]);
+                        int to_response_len = strlen(to_response);
+                        memcpy(ptr, to_response, to_response_len);
+                        buffer_write_adv(&state->write_buffer, to_response_len);
+                    }
+                } else {
+                    memcpy(ptr, RCPT_TO_RECEIVED_RESPONSE, RCPT_TO_RECEIVED_RESPONSE_LEN);
+                    buffer_write_adv(&state->write_buffer, RCPT_TO_RECEIVED_RESPONSE_LEN);
+                }
                 return RESPONSE_WRITE;
             }else{
                 return ERROR;
@@ -345,9 +371,14 @@ static enum smtp_state request_process(struct smtp * state){
             uint8_t *ptr;
             ptr = buffer_write_ptr(&state->write_buffer, &count);
 
-            if (count > DATA_INIT_RESPONSE_LEN && create_file(state)){
-                memcpy(ptr, DATA_INIT_RESPONSE, DATA_INIT_RESPONSE_LEN);
-                buffer_write_adv(&state->write_buffer, DATA_INIT_RESPONSE_LEN);
+            if ((count > DATA_INIT_RESPONSE_LEN || (count > DATA_INIT_RESPONSE_VERBOSE_LEN && stats.verbose_mode)) && create_file(state)) {
+                if(stats.verbose_mode) {
+                    memcpy(ptr, DATA_INIT_RESPONSE_VERBOSE, DATA_INIT_RESPONSE_VERBOSE_LEN);
+                    buffer_write_adv(&state->write_buffer, DATA_INIT_RESPONSE_VERBOSE_LEN);
+                } else {
+                    memcpy(ptr, DATA_INIT_RESPONSE, DATA_INIT_RESPONSE_LEN);
+                    buffer_write_adv(&state->write_buffer, DATA_INIT_RESPONSE_LEN);
+                }
                 state->is_data = true;
                 return RESPONSE_WRITE;
             }else{
@@ -447,23 +478,22 @@ static void write_header(struct selector_key * key) {
 
 }
 
+static void add_date_to_header(struct smtp * state) {
+    int ofset = state->date_file_offset;
+    
+    //sprintf("Date: %s \n");
+}
+
 static unsigned int deliver_mail(struct selector_key * key){
     struct smtp * state = ATTACHMENT(key);
     int fd = state->file_fd;
     char new_filename[200];
     char temp_filename[200];
     char path[200];
-    // * creo q no pone el "successf deliv"
-    // write()
     
+    add_date_to_header(ATTACHMENT(key));
     
-    // todo: start date
-    close(fd);
-
-    // Temporal
-//    char * nombre = "pepe";
     char * nombre = state->hostname;
-    // todo: move 
 
     sprintf(path, "%s/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
@@ -476,11 +506,32 @@ static unsigned int deliver_mail(struct selector_key * key){
         perror("There has been an error moving the mail to new directory");
         return ERROR;
     }
+    close(fd);
+    state->file_fd = INVALID_FD;
     
-    char resp[DATA_DONE_RESPONSE_LEN] = {0};
-    sprintf(resp ,"%s %d\r\n", DATA_DONE_RESPONSE, state->mail_id );
-    if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_LEN) ) 
+    FILE * reports = fopen("/var/Maildir/reports.txt", "a");
+    if (reports == NULL) {
+        perror("There has been an error with reports document\n");
+        return false;
+    }
+
+    for(int i=0; i<state->receiverNum; i++) {
+        for(int j=0; j<state->senderNum; j++)
+        fprintf(reports, "from %s to %s - %d\n", state->mailfrom[j], state->rcptTo[i], state->time);
+    }
+    fclose(reports);
+    
+    if(stats.verbose_mode) {
+        char resp[DATA_DONE_RESPONSE_VERBOSE_LEN] = {0};
+        sprintf(resp, "%s%d%s", DATA_DONE_RESPONSE_VERBOSE, state->mail_id, DATA_DONE_RESPONSE_VERBOSE_END);
+        if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_VERBOSE_LEN) ) 
         goto fail;
+    } else {
+        char resp[DATA_DONE_RESPONSE_LEN] = {0};
+        sprintf(resp ,"%s %d\r\n", DATA_DONE_RESPONSE, state->mail_id );
+        if ( !start_new_request(state,resp ,DATA_DONE_RESPONSE_LEN) ) 
+        goto fail;
+    }
 
     if ( SELECTOR_SUCCESS != selector_set_interest_key(key, OP_WRITE))
         close(fd);
@@ -511,9 +562,6 @@ static unsigned int data_read_basic(struct selector_key *key, struct smtp *state
             }
         i++;
 	}
-    
-// escribo si lei , lo deje abajo
-    // done o no, escribo en el file
 
 
 	// write to file from buffer if is not empty
@@ -640,6 +688,7 @@ static unsigned int data_write(struct selector_key * key){
         }
             
         if(n>=0){
+            stats.bytes_transferred += n;
             buffer_read_adv(wb, n);
 
             if (!buffer_can_read(wb)){
@@ -742,6 +791,11 @@ smtp_write(struct selector_key *key) {
 static void
 smtp_close(struct selector_key *key) {
     stats.concurrent_connections--;
+    
+    int fd = ATTACHMENT(key)->file_fd;
+    if ( fd != INVALID_FD)                  
+        close(fd);
+    
     smtp_destroy(ATTACHMENT(key));
 }
 
@@ -749,12 +803,13 @@ static void
 smtp_done(struct selector_key* key) {
     if(key->fd != -1) {
         //lo sacamos del selector 
+        int fd = key->fd;
         if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, key->fd)) {
             abort();
         }
-        close(key->fd);
+        close(fd);
     }
-    close( ATTACHMENT(key)->file_fd);
+    
     
 }
 
@@ -795,12 +850,25 @@ smtp_passive_accept(struct selector_key *key) {
     buffer_init(&state->read_buffer, N(state->raw_buff_read), state->raw_buff_read);
     buffer_init(&state->write_buffer, N(state->raw_buff_write), state->raw_buff_write);
 
-    if ( !start_new_request(state, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN)) 
+    state->file_fd = INVALID_FD;
+
+    if(stats.verbose_mode) {
+        size_t count;
+        uint8_t *ptr;
+        char ehlo_response[1024];
+        ptr = buffer_write_ptr(&state->write_buffer, &count);
+        size_t n = sprintf(ehlo_response, WELCOME_RESPONSE_VERBOSE, server_port);
+        int ehlo_response_len = strlen(ehlo_response);
+        memcpy(ptr, ehlo_response, ehlo_response_len);
+        buffer_write_adv(&state->write_buffer, ehlo_response_len);
+    } 
+    if (!start_new_request(state, WELCOME_RESPONSE, WELCOME_RESPONSE_LEN)) 
         goto fail;
 
     //indico la dir donde se guarde
     state->request_parser.request = &state->request;
     request_parser_init(&state->request_parser); 
+    
 
     if(SELECTOR_SUCCESS != selector_register(key->s, client, &smtp_handler, OP_WRITE, state)) {
         goto fail;
