@@ -83,9 +83,15 @@ enum smtp_state{
     ERROR,
 };
 
-struct current_stats {
-    int historic_connections, concurrent_connections, bytes_transferred;
+
+struct stats {
+    int historic_connections;
+    int concurrent_connections;
+    int bytes_transferred;
+    bool verbose_mode;
 };
+
+extern struct stats stats;
 
 void
 smtp_passive_accept(struct selector_key *key);

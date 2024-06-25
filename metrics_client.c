@@ -105,11 +105,7 @@ void print_response(struct metrics_response *res, int command) {
             printf("Number of bytes transferred: %d\n", res->response);
             break;
         case 3:
-            printf("Verbose mode is ON\n");
-            break;
         case 4:
-            printf("Verbose mode is OFF\n");
-            break;
         case 5:
             printf("Verbose mode is %s\n", res->response? "ON" : "OFF");
             break;

@@ -19,8 +19,12 @@
 /** lee todos los bytes del mensaje de tipo `hello' y inicia su proceso */
 //retorno el estado al que voy
 
-int historic_connections = 0;
-int concurrent_connections = 0;
+struct stats stats = {
+    .historic_connections = 0,
+    .concurrent_connections = 0,
+    .bytes_transferred = 0,
+    .verbose_mode = false
+};
 
 static void
 smtp_done(struct selector_key* key);
@@ -461,7 +465,7 @@ smtp_write(struct selector_key *key) {
 
 static void
 smtp_close(struct selector_key *key) {
-    concurrent_connections--;
+    stats.concurrent_connections--;
     smtp_destroy(ATTACHMENT(key));
 }
 
@@ -483,8 +487,8 @@ smtp_passive_accept(struct selector_key *key) {
     socklen_t client_addr_len = sizeof(client_addr);
     struct smtp* state = NULL;
 
-    concurrent_connections++;
-    historic_connections++;
+    stats.concurrent_connections++;
+    stats.historic_connections++;
 
     const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
     if(client == -1) {

@@ -29,9 +29,6 @@
 #define STATUS_INVALID_REQUEST_LENGTH 0x04
 #define STATUS_UNEXPECTED_ERROR 0x05
 
-extern int historic_connections;
-extern int concurrent_connections;
-
 struct metrics_request {
     uint16_t signature;
     uint8_t version;
