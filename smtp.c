@@ -324,9 +324,10 @@ static enum smtp_state request_process(struct smtp * state){
             if (count > RCPT_TO_RECEIVED_RESPONSE_LEN){
                 memcpy(ptr, RCPT_TO_RECEIVED_RESPONSE, RCPT_TO_RECEIVED_RESPONSE_LEN);
                 buffer_write_adv(&state->write_buffer, RCPT_TO_RECEIVED_RESPONSE_LEN);
-                for (size_t i = 0; i < currentRecipient; i++, state->receiverNum++){
+                for (size_t i = 0; i < currentRecipient; i++){ 
                     state->rcptTo[ state->receiverNum + i] = provisionalRecipients[i];
                 }
+                state->receiverNum += currentRecipient;
                 state->is_rcpt_to_initiated=true;
                 return RESPONSE_WRITE;
             }else{
@@ -399,24 +400,43 @@ static void data_read_init(const unsigned st, struct selector_key *key){
 static void write_header(struct selector_key * key) {
     struct smtp * state = ATTACHMENT(key);
     //check if correct, format: mail1, mail2
-//    char * mailFromConcat;
-//    for (int i = 0; i < state->senderNum; i++){
-//        strcat(mailFromConcat, state->mailfrom[i]);
-//        if (i != state->senderNum -1){
-//            strcat(mailFromConcat, ",");
-//        }
-//    }
-    char * from_user = state->hostname;
-//    char * from_user = mailFromConcat;
-//    char * from_user = "pepe"; //state->mailfrom = 
+    char * comma = calloc(1, 3);
+    comma = ", ";
+    size_t total_length = 0;
+    for (int i = 0; i < state->senderNum; i++) {
+        total_length += strlen(state->mailfrom[i]);
+    }
+    total_length += 2 * (state->senderNum-1);
+    char * mailFromConcat = calloc(1, total_length + 1);
+    for (int i = 0; i < state->senderNum; i++){
+        strcat(mailFromConcat, state->mailfrom[i]);
+        if (i != state->senderNum -1){
+            strcat(mailFromConcat, comma);
+        }
+    }
+    char * from_user = mailFromConcat;
+
+    size_t total_len = 0;
+    for (int i = 0; i < state->receiverNum; i++) {
+        total_len += strlen(state->rcptTo[i]);
+    }
+    total_len += 2 * (state->receiverNum -1);
+    char * mailToConcat = calloc(1, total_len + 1);
+    for (int i = 0; i < state->receiverNum; i++){
+        strcat(mailToConcat, state->rcptTo[i]);
+        if (i != state->receiverNum-1){
+            strcat(mailToConcat, comma);
+        }
+    }
+    char * to_user = mailToConcat;
 
     buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
     size_t count = 15;      // todo
 
     char blank_space[DATE_SPACE_SIZE]={' '};
-    char header[100];
+    char header[1500];
     // ! NO ES EFICIENTE
-    sprintf( header, "From: %s\nDate: %s\n",from_user,blank_space);
+    sprintf( header, "From: %s\r\nSender: %s@proto.leak.com.ar\r\nTo: %s\r\nDate: %s\r\n",from_user, state->hostname,to_user,blank_space);
     //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
     size_t header_size = strlen(header);
 
