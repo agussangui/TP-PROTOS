@@ -16,8 +16,12 @@
 #define DATA_INIT_RESPONSE "354 Go ahead\r\n"
 #define DATA_INIT_RESPONSE_LEN 14
 
+
 /*------------------------------------------------- Errors -------------------------------------------------------*/
 #define ERROR_UNRECOGNIZABLE_COMMAND "502 5.5.1 Unrecognizable command\r\n"
 #define ERROR_UNRECOGNIZABLE_COMMAND_LEN 34
+
+#define BAD_SEQUENCE_CMD "503 Bad sequence of commands\r\n"
+#define BAD_SEQUENCE_CMD_LEN 30
 
 #endif 
