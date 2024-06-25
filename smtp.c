@@ -463,17 +463,11 @@ static unsigned int deliver_mail(struct selector_key * key){
     char new_filename[200];
     char temp_filename[200];
     char path[200];
-    // * creo q no pone el "successf deliv"
-    // write()
-    
     
     // todo: start date
     close(fd);
 
-    // Temporal
-//    char * nombre = "pepe";
     char * nombre = state->hostname;
-    // todo: move 
 
     sprintf(path, "%s/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
@@ -486,6 +480,18 @@ static unsigned int deliver_mail(struct selector_key * key){
         perror("There has been an error moving the mail to new directory");
         return ERROR;
     }
+        
+    FILE * reports = fopen("/var/Maildir/reports.txt", "a");
+    if (reports == NULL) {
+        perror("There has been an error with reports document\n");
+        return false;
+    }
+
+    for(int i=0; i<state->receiverNum; i++) {
+        for(int j=0; j<state->senderNum; j++)
+        fprintf(reports, "from %s to %s - %d\n", state->mailfrom[j], state->rcptTo[i], state->time);
+    }
+    fclose(reports);
     
     if(stats.verbose_mode) {
         char resp[DATA_DONE_RESPONSE_VERBOSE_LEN] = {0};
