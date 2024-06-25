@@ -18,6 +18,9 @@
 #define CMD_HISTORICAL 0x00
 #define CMD_CONCURRENT 0x01
 #define CMD_BYTES_TRANSFERRED 0x02
+#define CMD_VERBOSE_ON 0x03
+#define CMD_VERBOSE_OFF 0x04
+#define CMD_VERBOSE_STATUS 0x05
 
 #define STATUS_OK 0x00
 #define STATUS_AUTH_FAILED 0x01
@@ -25,9 +28,6 @@
 #define STATUS_INVALID_COMMAND 0x03
 #define STATUS_INVALID_REQUEST_LENGTH 0x04
 #define STATUS_UNEXPECTED_ERROR 0x05
-
-extern int historic_connections;
-extern int concurrent_connections;
 
 struct metrics_request {
     uint16_t signature;
