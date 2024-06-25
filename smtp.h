@@ -8,6 +8,7 @@
 #include "request.h"
 #include "data.h"
 
+#define DOMAIN_SUPPORTED "@proto.leak.com.ar"
 #define MAX_RECIPIENTS_SUPPORTED 128
 #define MAX_MAIL_FROM_SUPPORTED 128
 
@@ -32,6 +33,7 @@ struct smtp{
     bool is_mail_from_initiated;
     bool is_rcpt_to_initiated;
 
+    char * hostname;
     char * mailfrom[MAX_MAIL_FROM_SUPPORTED];
     //el minimo en SMTP es de 100
     char * rcptTo[MAX_RECIPIENTS_SUPPORTED];
