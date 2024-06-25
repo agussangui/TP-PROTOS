@@ -247,7 +247,7 @@ static enum smtp_state request_process(struct smtp * state){
             char * domain = strchr(sender, '@');
             if (strcasecmp(domain, DOMAIN_SUPPORTED)){
                 //change error type -> more specific
-                return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+                return handleErrors(state, REQUEST_NOT_TAKEN_RESPONSE, REQUEST_NOT_TAKEN_RESPONSE_LEN);
             }
             if (count > MAIL_FROM_RECEIVED_RESPONSE_LEN){
                 if(stats.verbose_mode) {
@@ -314,7 +314,7 @@ static enum smtp_state request_process(struct smtp * state){
                     char * domain = strchr(endEmail, '@');
                     if (strcasecmp(domain, DOMAIN_SUPPORTED)){
                         //more specific
-                        return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+                        return handleErrors(state, REQUEST_NOT_TAKEN_RESPONSE, REQUEST_NOT_TAKEN_RESPONSE_LEN);
                     }else{
                         size_t mailLen = strlen(endEmail);
                         char * mail = calloc(1, mailLen + 1);
@@ -480,7 +480,9 @@ static void write_header(struct selector_key * key) {
     sprintf( header, "From: %s\r\nSender: %s@proto.leak.com.ar\r\nTo: %s\r\n%s\r\n",from_user, state->hostname,to_user,blank_space);
     //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
     size_t header_size = strlen(header);
-    state->date_file_offset =  6+ strlen(from_user)+2 + 8 + strlen(to_user) + strlen(state->hostname) + 24+ 2;  // todo poner contador de uri
+    int date_offset = 6+ strlen(from_user)+2 + 8 + strlen(to_user) + strlen(state->hostname) + 24+ 2;
+    state->date_file_offset = date_offset;  
+    stats.bytes_transferred += date_offset;
 
     memcpy(&state->raw_buff_file, header, header_size);
     buffer_write_adv(&state->file_buffer, header_size);

@@ -7,8 +7,6 @@
 #define OK_HELO_RESPONSE_LEN 39
 #define OK_EHLO_RESPONSE "250-proto.leak.com.ar at your service\r\n250-%s\r\n250-PIPELINING\r\n250 SPACE 10240000\r\n" 
 #define OK_EHLO_RESPONSE_LEN 85 
-#define REQUEST_NOT_TAKEN_RESPONSE "550 Requested action not taken: mailbox unavailable\r\n"
-#define REQUEST_NOT_TAKEN_RESPONSE_LEN 53
 #define MAIL_FROM_RECEIVED_RESPONSE "250 2.1.0 OK\r\n"
 #define MAIL_FROM_RECEIVED_RESPONSE_LEN 14
 #define RCPT_TO_RECEIVED_RESPONSE "250 2.1.5 OK\r\n"
@@ -39,4 +37,6 @@
 #define BAD_SEQUENCE_CMD "503 Bad sequence of commands\r\n"
 #define BAD_SEQUENCE_CMD_LEN 30
 
+#define REQUEST_NOT_TAKEN_RESPONSE "550 Requested action not taken: mailbox unavailable\r\n"
+#define REQUEST_NOT_TAKEN_RESPONSE_LEN 53
 #endif 
