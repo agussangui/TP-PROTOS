@@ -34,6 +34,7 @@ struct smtp{
     bool is_rcpt_to_initiated;
 
     char * hostname;
+    //para futuras extensiones
     char * mailfrom[MAX_MAIL_FROM_SUPPORTED];
     //el minimo en SMTP es de 100
     char * rcptTo[MAX_RECIPIENTS_SUPPORTED];

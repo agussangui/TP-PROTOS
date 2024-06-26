@@ -43,6 +43,8 @@ verb(const uint8_t c, struct request_parser* p) {
         case ' ':
             if (strcasecmp(p->request->verb, "mail") == 0 || strcasecmp(p->request->verb, "rcpt") == 0){
                 next = request_verb;
+            }else if (strcasecmp(p->request->verb, "mail from") == 0 || strcasecmp(p->request->verb, "rcpt to") == 0){
+                next = request_error;
             }else{
                 next = request_verb_space;
             }
@@ -62,6 +64,10 @@ verb(const uint8_t c, struct request_parser* p) {
         }
     }
     else{
+        if (next == request_error){
+            p->request->verb[p->i++] = c;
+            next = request_args;
+        }
         p->request->verb[p->i] = 0;
     }
     return next;
@@ -86,11 +92,7 @@ request_parser_feed (struct request_parser* p, const uint8_t c) {
                 next = verb(c, p);
                 break;
         case request_colon:
-                if (c == ' '){
-                    next = request_verb_space;
-                }else{
-                    next = request_error;
-                }
+                next = args(c,p);
                 break;
         case request_verb_space:
                 if (c == '\r'){
