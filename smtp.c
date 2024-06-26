@@ -805,7 +805,7 @@ static unsigned int data_write(struct selector_key * key){
         
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        int n = write(state->file_fd , ptr ,  count);
+        size_t n = write(state->file_fd , ptr ,  count);
         
         if (errno == EWOULDBLOCK) {         
             perror("write will block");
