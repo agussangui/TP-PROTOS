@@ -37,6 +37,9 @@
 #define BAD_SEQUENCE_CMD "503 Bad sequence of commands\r\n"
 #define BAD_SEQUENCE_CMD_LEN 30
 
+#define NESTED_MAIL_CMD "503 ERROR: Nested MAIL command\r\n"
+#define NESTED_MAIL_CMD_LEN 32
+
 #define REQUEST_NOT_TAKEN_RESPONSE "550 Requested action not taken: mailbox unavailable\r\n"
 #define REQUEST_NOT_TAKEN_RESPONSE_LEN 53
 #endif 

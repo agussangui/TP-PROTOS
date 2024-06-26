@@ -88,7 +88,11 @@ create_file(struct smtp * state) {
 
     // Temporal
 //    char * nombre = "pepe";
-    char * nombre = state->hostname;
+    size_t len = strlen(state->mailfrom[0]);
+    char * fromCopy = calloc(1, len+1);
+    memcpy(fromCopy, state->mailfrom[0], len);
+    char * hostname = strtok(fromCopy, "@");
+    char * nombre = hostname;
 
     char * home_dir = "/var/Maildir";
     create_directory_if_not_exists(home_dir);
@@ -169,6 +173,16 @@ static enum smtp_state handleErrors(struct smtp * state, char * error, size_t le
     return ERROR;
 }
 
+static bool hasOnlySpaces(char * string){
+    while (*string != '\0'){
+        if (*string != ' '){
+            return false;
+        }
+        string++;
+    }
+    return true;
+}
+
 static enum smtp_state request_process(struct smtp * state){
 
     if (strcasecmp(state->request_parser.request->verb, "ehlo") == 0){
@@ -216,6 +230,9 @@ static enum smtp_state request_process(struct smtp * state){
     }
 
     if (strcasecmp(state->request_parser.request->verb, "mail from") == 0){
+        if (state->is_mail_from_initiated){
+            return handleErrors(state, NESTED_MAIL_CMD, NESTED_MAIL_CMD_LEN);
+        }
         if (state->request_parser.request->args != NULL && state->is_helo_done){
             size_t count;
             uint8_t *ptr;
@@ -225,13 +242,25 @@ static enum smtp_state request_process(struct smtp * state){
             char * sender;
             char * beginEmail;
             char * endEmail;
+            char * argsCopy;
+            char * checkGarbage;
             char separatorBegin[2] = BEGIN_EMAIL;
             char separatorEnd[2] = END_EMAIL;
+            size_t argsLen = strlen(state->request_parser.request->args);
 
             senderWithEnd = strchr(state->request_parser.request->args, '<');
             if (senderWithEnd == NULL){
                 return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
             }
+            if (senderWithEnd != state->request_parser.request->args){
+                argsCopy = calloc(1, argsLen + 1);
+                memcpy(argsCopy, state->request_parser.request->args, argsLen);
+                checkGarbage = strtok(argsCopy, "<");
+                if (!hasOnlySpaces(checkGarbage)){
+                    return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);            
+                }
+            }
+
             senderWithEnd++;
             if (strchr(senderWithEnd, '<') != NULL){
                return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
@@ -295,12 +324,26 @@ static enum smtp_state request_process(struct smtp * state){
             size_t currentRecipient = 0;
             char separatorBegin[2] = BEGIN_EMAIL;
             char separatorEnd[2] = END_EMAIL;
+            char * copy;
             char * nextOcurrence;
+            char * argsCopy;
+            char * middle;
+            char * checkGarbage;
+            size_t argsLen = strlen(state->request_parser.request->args);
 
             nextOcurrence = strchr(state->request_parser.request->args, '<');
-            if (nextOcurrence == NULL || nextOcurrence != state->request_parser.request->args){
+            if (nextOcurrence == NULL){
                 return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
             }
+            if (nextOcurrence!= state->request_parser.request->args){
+                argsCopy = calloc(1, argsLen + 1);
+                memcpy(argsCopy, state->request_parser.request->args, argsLen);
+                checkGarbage = strtok(argsCopy, "<");
+                if (!hasOnlySpaces(checkGarbage)){
+                    return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);            
+                }
+            }
+
             size_t len = strlen(nextOcurrence);
             char * toTrim = calloc(1, len +1);
             memcpy(toTrim, nextOcurrence, len);
@@ -325,10 +368,20 @@ static enum smtp_state request_process(struct smtp * state){
                         currentRecipient++;
                     }
                 }
-
+                middle = strchr(nextOcurrence, '>');
+                middle++;
                 nextOcurrence = strchr(nextOcurrence, '<');
                 if (nextOcurrence == NULL) {
                     break;
+                }
+                if (nextOcurrence != middle){
+                    argsLen = strlen(middle);
+                    argsCopy = calloc(1, argsLen + 1);
+                    memcpy(argsCopy, middle, argsLen);
+                    checkGarbage = strtok(argsCopy, "<");
+                    if (!hasOnlySpaces(checkGarbage)){
+                        return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);            
+                    }
                 }
                 len = strlen(nextOcurrence);
                 toTrim = calloc(1, len + 1);
@@ -560,7 +613,11 @@ static unsigned int deliver_mail(struct selector_key * key){
         return ERROR;
     }
     
-    char * nombre = state->hostname;
+    size_t len = strlen(state->mailfrom[0]);
+    char * fromCopy = calloc(1, len+1);
+    memcpy(fromCopy, state->mailfrom[0], len);
+    char * hostname = strtok(fromCopy, "@");
+    char * nombre = hostname;
 
     sprintf(path, "%s/%s/new", state->home_dir, nombre);
     create_directory_if_not_exists(path);
