@@ -21,7 +21,7 @@
 
 #define MAILDIR_TMP "~/Maildir/tmp"
 #define MAILDIR_NEW "~/Maildir/new"
-#define DATE_SPACE_SIZE 40 
+#define DATE_SPACE_SIZE 40+9
 #define SIZE_MAIL 4000
 #define DATE_BUF_SIZE 200
 #define TIME_ZONE 6
@@ -387,7 +387,6 @@ static enum smtp_state request_process(struct smtp * state){
                     buffer_write_adv(&state->write_buffer, DATA_INIT_RESPONSE_LEN);
                 }
                 state->is_data = true;
-                buffer_read(&state->read_buffer);
                 return RESPONSE_WRITE;
             }else{
                 return ERROR;
@@ -470,26 +469,26 @@ static void write_header(struct selector_key * key) {
     char * to_user = mailToConcat;
 
     buffer_init(&state->file_buffer, N(state->raw_buff_file), state->raw_buff_file);
-    size_t count = 15;      // todo
 
     char * blank_space = calloc(1, DATE_SPACE_SIZE + 1);
     for (int i = 0; i < DATE_SPACE_SIZE; i++){
         blank_space[i] = ' ';
     }
-//    char * blank = calloc(DATE_SPACE_SIZE);
+
     char header[1500];
-    // ! NO ES EFICIENTE
-    sprintf( header, "From: %s\r\nSender: %s@proto.leak.com.ar\r\nTo: %s\r\n%s\r\n",from_user, state->hostname,to_user,blank_space);
-    //buffer_write_adv(&state->file_buffer,strlen((char *) state->raw_buff_file));
+
+    sprintf( header, "From: %s\nSender: %s@proto.leak.com.ar\nTo: %s\n%s\n",from_user, state->hostname,to_user,blank_space);
+
     size_t header_size = strlen(header);
-    int date_offset = 6+ strlen(from_user)+2 + 8 + strlen(to_user) + strlen(state->hostname) + 24+ 2;
+    int date_offset = 3+strlen(from_user)+2 + 8 + strlen(to_user) + strlen(state->hostname) + 24+ 2;
     state->date_file_offset = date_offset;  
-    stats.bytes_transferred += date_offset;
+
 
     memcpy(&state->raw_buff_file, header, header_size);
-    buffer_write_adv(&state->file_buffer, header_size);
+    buffer_write_adv(&state->file_buffer, header_size-10);
     
-    uint8_t *ptr = buffer_read_ptr(&state->file_buffer, &count);
+    free(blank_space);
+
 
 }
 
@@ -516,7 +515,7 @@ static void fmt_date (char* buffer) {
 
     strftime(zone, sizeof(zone), "%z", timeinfo);
 
-    snprintf(buffer, DATE_BUF_SIZE, "Date: %s, %02d %s %04d %02d:%02d:%02d %s",
+    snprintf(buffer, DATE_BUF_SIZE, "Date: %s, %02d %s %04d %02d:%02d:%02d %s\n",
              get_day_of_week(timeinfo->tm_wday),
              timeinfo->tm_mday,
              get_month(timeinfo->tm_mon),
@@ -751,7 +750,7 @@ static unsigned int data_write(struct selector_key * key){
 
         int n = write(state->file_fd , ptr ,  count);
         
-        if (errno == EWOULDBLOCK) {         // * temp
+        if (errno == EWOULDBLOCK) {         
             perror("write will block");
             ret = ERROR;
         }
@@ -759,6 +758,12 @@ static unsigned int data_write(struct selector_key * key){
         if(n>=0){
             stats.bytes_transferred += n;
             buffer_read_adv(wb, n);
+            
+            if ( n!=count ){
+                perror("There has been an error while writing the mail\n");
+                return ERROR;
+            }
+
 
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)

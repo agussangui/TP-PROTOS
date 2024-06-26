@@ -21,7 +21,7 @@ struct smtp{
     struct state_machine stm;
 
     /* buffers */
-    uint8_t raw_buff_read[2048], raw_buff_write[2048], raw_buff_file[2048];
+    uint8_t raw_buff_read[2048], raw_buff_write[2048], raw_buff_file[2048+14];
     buffer read_buffer, write_buffer, file_buffer;
 
     struct request request;
