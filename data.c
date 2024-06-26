@@ -31,7 +31,7 @@ extern enum data_state data_parser_feed (struct data_parser* p, const uint8_t c)
             if (c == '\n'){
                 next = data_crlf;
             }else{
-                //buffer_write(p->output_buffer, '\r');
+                //buffer_write(p->output_buffer, '\r');      // decidimos ignorar \r en DATA
                 buffer_write(p->output_buffer, c);
                 next = data_data;
             }
