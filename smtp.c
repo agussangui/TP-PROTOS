@@ -585,16 +585,21 @@ static bool add_date_to_header(struct smtp * state, char * date_buff) {
         perror("Couldn't move file offset");
         return false;
     }
-        
+    size_t count = strlen(date_buff);
     fmt_date(date_buff);
-    ssize_t n = write(state->file_fd , date_buff , strlen(date_buff));
-    
-    stats.bytes_transferred +=n;
+    size_t n = write(state->file_fd , date_buff , count);
 
-    if (errno == EWOULDBLOCK) {         
+    if (errno == EWOULDBLOCK ) {         
         perror("write will block");
         return false;
     }
+
+    if ( errno == EAGAIN || n!=count) {         
+        perror("There has been an error while writing the sent date in the mail\n");
+        return false;
+    }
+
+    stats.bytes_transferred +=n;
     
     return true;
 }
@@ -811,20 +816,23 @@ static unsigned int data_write(struct selector_key * key){
             perror("write will block");
             ret = ERROR;
         }
+
+        if ( errno == EAGAIN ){
+            perror("There has been an error while writing the mail\n");
+            ret = ERROR;
+        }
             
-        if(n>=0){
+        if(n>0){
             stats.bytes_transferred += n;
             buffer_read_adv(wb, n);
-            
-            if ( n!=count ){
-                perror("There has been an error while writing the mail\n");
-                return ERROR;
-            }
-
 
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
                     if (data_is_done(state->data_parser.state)) {
+                        if ( n!=count ){
+                            perror("There has been an error while writing the mail\n");
+                            ret = ERROR;
+                        }
                         if (SELECTOR_SUCCESS == selector_set_interest_key( key, OP_WRITE)){ 
                             ret = DONE;
                         }
