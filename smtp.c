@@ -610,8 +610,10 @@ static bool add_date_to_header(struct smtp * state, char * date_buff) {
         perror("Couldn't move file offset");
         return false;
     }
-    size_t count = strlen(date_buff);
+    
     fmt_date(date_buff);
+    size_t count = strlen(date_buff);
+    
     size_t n = write(state->file_fd , date_buff , count);
 
     if (errno == EWOULDBLOCK ) {         
@@ -835,7 +837,7 @@ static unsigned int data_write(struct selector_key * key){
         
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        ssize_t n = write(state->file_fd , ptr ,  count);
+        ssize_t n = write(state->file_fd , ptr , count);
         
         if (errno == EWOULDBLOCK) {         
             perror("write will block");
@@ -854,7 +856,7 @@ static unsigned int data_write(struct selector_key * key){
             if (!buffer_can_read(wb)){
                 //check where to go (data or request)
                     if (data_is_done(state->data_parser.state)) {
-                        if ( n!=count ){
+                        if ( (size_t) n!=count ){
                             perror("There has been an error while writing the mail\n");
                             ret = ERROR;
                         }
