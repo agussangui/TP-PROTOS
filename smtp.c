@@ -121,13 +121,30 @@ create_file(struct smtp * state) {
     int fd = fileno(file);
     if ( fd < 0 ) {
         perror("Coundn't open file");
+        state->file_fd = INVALID_FD;
         return false;
     }
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        perror("There has been an error error getting file flags");
+        state->file_fd = INVALID_FD;
+        close(fd);
+        return false;
+    }
+
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("There has been an error while setting non block flag\n");
+        state->file_fd = INVALID_FD;
+        close(fd);
+        return false;
+    }
+
     state->file_fd = fd;
     state->mail_id = random_number;
     state->time = t;
     state->home_dir = home_dir;
-    return fd;
+    return true;
 }
 
 static bool 
@@ -613,7 +630,7 @@ static bool add_date_to_header(struct smtp * state, char * date_buff) {
     
     fmt_date(date_buff);
     size_t count = strlen(date_buff);
-    
+
     size_t n = write(state->file_fd , date_buff , count);
 
     if (errno == EWOULDBLOCK ) {         
