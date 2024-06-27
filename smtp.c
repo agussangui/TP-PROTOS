@@ -245,7 +245,7 @@ static enum smtp_state request_process(struct smtp * state){
         if (state->is_mail_from_initiated){
             return handleErrors(state, NESTED_MAIL_CMD, NESTED_MAIL_CMD_LEN);
         }
-        if (state->request_parser.request->args != NULL && state->is_helo_done){
+        if (state->request_parser.request->args[0] != 0 && state->is_helo_done){
             size_t count;
             uint8_t *ptr;
             ptr = buffer_write_ptr(&state->write_buffer, &count);
@@ -324,7 +324,7 @@ static enum smtp_state request_process(struct smtp * state){
 
     if (strcasecmp(state->request_parser.request->verb, "rcpt to") == 0){
 
-        if (state->request_parser.request->args != NULL && state->is_mail_from_initiated){
+        if (state->request_parser.request->args[0] != 0 && state->is_mail_from_initiated){
             size_t count;
             uint8_t *ptr;
             ptr = buffer_write_ptr(&state->write_buffer, &count);
@@ -835,7 +835,7 @@ static unsigned int data_write(struct selector_key * key){
         
         uint8_t *ptr = buffer_read_ptr(wb, &count);
 
-        size_t n = write(state->file_fd , ptr ,  count);
+        ssize_t n = write(state->file_fd , ptr ,  count);
         
         if (errno == EWOULDBLOCK) {         
             perror("write will block");
@@ -847,7 +847,7 @@ static unsigned int data_write(struct selector_key * key){
             ret = ERROR;
         }
             
-        if(n>0){
+        if(n>=0){
             stats.bytes_transferred += n;
             buffer_read_adv(wb, n);
 
