@@ -183,6 +183,18 @@ static bool hasOnlySpaces(char * string){
     return true;
 }
 
+static size_t hasNchars(char * string, char c){
+    size_t counter = 0;
+    while (*string != '\0'){
+        if (*string == c){
+            counter++;
+        }
+        string++;
+    }
+    return counter;
+}
+
+
 static enum smtp_state request_process(struct smtp * state){
 
     if (strcasecmp(state->request_parser.request->verb, "ehlo") == 0){
@@ -270,7 +282,7 @@ static enum smtp_state request_process(struct smtp * state){
                 return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
             }
             endEmail++;
-            if (strchr(endEmail,'>') != NULL || strchr(endEmail,':') != NULL || strchr(endEmail,'<') != NULL ){
+            if (!hasOnlySpaces(endEmail)){
                 return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
             }
             
@@ -317,6 +329,10 @@ static enum smtp_state request_process(struct smtp * state){
             uint8_t *ptr;
             ptr = buffer_write_ptr(&state->write_buffer, &count);
 
+            if (hasNchars(state->request_parser.request->args, '<') != hasNchars(state->request_parser.request->args, '>')){
+                return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);             
+            }
+
             char * saveptr;
             char * beginEmail;
             char * endEmail;
@@ -349,11 +365,14 @@ static enum smtp_state request_process(struct smtp * state){
             memcpy(toTrim, nextOcurrence, len);
             nextOcurrence++;
             char * rcpt = strtok_r(toTrim, separatorBegin, &saveptr);
+            size_t rcptLen = strlen(rcpt);
+            char * copyRcpt = calloc(1, rcptLen+1);
+            memcpy(copyRcpt, rcpt, rcptLen);
 
             while (rcpt != NULL){
                 endEmail = strtok_r(rcpt, separatorEnd, &saveptr);
 
-                if (endEmail == NULL){
+                if (endEmail == NULL || ((strlen(endEmail) == strlen(copyRcpt)) && strcmp(endEmail, copyRcpt) == 0)){
                     return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
                 }else{
                     char * domain = strchr(endEmail, '@');
@@ -388,8 +407,14 @@ static enum smtp_state request_process(struct smtp * state){
                 memcpy(toTrim, nextOcurrence, len);
                 nextOcurrence++;
                 rcpt = strtok_r(toTrim, separatorBegin, &saveptr);
+                if (rcpt == NULL || (strlen(rcpt) == strlen(toTrim) && strcmp(rcpt, toTrim) == 0)){
+                    return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
+                }
+                rcptLen = strlen(rcpt);
+                copyRcpt = calloc(1, rcptLen+1);
+                memcpy(copyRcpt, rcpt, rcptLen);
             }
-            if (strtok_r(NULL, separatorEnd, &saveptr) != NULL){
+            if (strchr(rcpt, '>') != NULL || !hasOnlySpaces(middle)){
                 return handleErrors(state, ERROR_UNRECOGNIZABLE_COMMAND, ERROR_UNRECOGNIZABLE_COMMAND_LEN);
             }
 
@@ -425,7 +450,7 @@ static enum smtp_state request_process(struct smtp * state){
         }
     }
 
-    if (strcasecmp(state->request_parser.request->verb, "data") == 0 ){
+    if (strcasecmp(state->request_parser.request->verb, "data") == 0 && hasOnlySpaces(state->request_parser.request->args)){
         if (state->is_rcpt_to_initiated){
             size_t count;
             uint8_t *ptr;
