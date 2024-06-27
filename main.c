@@ -61,12 +61,21 @@ int main(int argc, char **argv) {
     addr.sin6_port        = htons(args.socks_port);
 
     const int server = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
     if(server < 0) {
-        err_msg = "unable to create socket";
+        err_msg = "unable to create TCP socket";
         goto finally;
     }
 
     fprintf(stdout, "Listening on TCP port %d\n", args.socks_port);
+    
+    if (metrics_server < 0) {
+        err_msg = "Unable to create UDP socket";
+        goto finally;
+    }
+
+    fprintf(stdout, "Listening on UDP port %d\n", args.metrics_port);
+    
 
     // man 7 ip. no importa reportar nada si falla.
     setsockopt(server, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 0 }, sizeof(int));
@@ -92,13 +101,6 @@ int main(int argc, char **argv) {
     metrics_addr.sin6_port        = htons(args.metrics_port);
 
     // Creo el socket UDP 
-    const int metrics_server = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-    if (metrics_server < 0) {
-        err_msg = "Unable to create UDP socket";
-        goto finally;
-    }
-
-    fprintf(stdout, "Listening on UDP port %d\n", args.metrics_port);
     
     setsockopt(metrics_server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 

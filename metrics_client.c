@@ -57,7 +57,7 @@ int receive_response(int sockfd, struct metrics_response *res) {
     return 0;
 }
 
-void print_options() {
+void print_options(void) {
     printf("Select the metric to request:\n");
     printf("0: Historical Connections\n");
     printf("1: Concurrent Connections\n");
